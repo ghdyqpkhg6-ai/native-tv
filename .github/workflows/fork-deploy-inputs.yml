@@ -2,12 +2,12 @@
 # Channel package does (.github/actions/package-ipk: same pinned SDK, same
 # build.py call), then exports what native-tv/lifecycle/deploy.sh reads, so
 # the developer's SSH deploy can run on a computer without the SDK.
-# Runs only on pushes to the deploy-build branch or by hand.
+# Runs only on pushes to the deploy-build (original) and custom (fork changes) branches, or by hand.
 name: Fork deploy inputs
 
 on:
   push:
-    branches: [deploy-build]
+    branches: [deploy-build, custom]
   workflow_dispatch:
 
 permissions:
