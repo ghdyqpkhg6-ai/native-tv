@@ -17906,6 +17906,9 @@ void HttpFrontDoor::dispatch(HttpExchange &exchange) const {
         const Json document = currentConfigDocument();
         const std::string clientId = document["youtubeClientId"].string();
         const std::string clientSecret = document["youtubeClientSecret"].string();
+        // The POSTs take JSON from this origin only, as every changing route does (http_csrf.cpp).
+        if (request.method == "POST" && rejectCrossSitePost(exchange))
+            return;
         Json result;
         if (request.uri == "/api/youtube/account" && request.method == "GET")
             result = youtubeAccount_.status(clientId, clientSecret);
