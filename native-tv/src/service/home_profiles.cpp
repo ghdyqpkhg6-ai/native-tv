@@ -14,7 +14,29 @@ const char *kColors[] = {"#a8c7fa", "#f2b8b5", "#6dd58c", "#ffb74d",
                          "#7fcfff", "#d0bcff"};
 const char *kLayoutKeys[] = {"rows", "order", "sort", "hidden", "kinds", "channels",
                              "picture", "appNames", "clockFormat", "showInputs",
-                             "showLgHome", "showLive", "colours"};
+                             "showLgHome", "showLive", "colours", "motion",
+                             "wallpaper", "wallpaperMode", "wallpaperRotate"};
+// Fork: Home's animation level, and the wallpaper chosen from the gallery with how it is shown
+// and how often it changes. "auto" fills a landscape picture and blurs the sides of a portrait.
+const char *const kMotionLevels[] = {"off", "subtle", "full"};
+const char *const kWallpaperModes[] = {"auto", "fit", "fill", "blur"};
+const char *const kRotateMinutes[] = {"off", "5", "15", "30", "60"};
+template <size_t N>
+std::string oneOf(const Json &value, const char *const (&allowed)[N], const std::string &fallback) {
+    const std::string text = value.string();
+    for (const char *candidate : allowed)
+        if (text == candidate) return text;
+    return fallback;
+}
+// A gallery id ("g07"), "slots" for the time-of-day pictures, or "" for none chosen yet.
+std::string wallpaperChoice(const Json &value, const std::string &fallback) {
+    const std::string text = value.string();
+    if (text == "slots" || text.empty()) return value.isString() ? text : fallback;
+    if (text.size() >= 2 && text.size() <= 4 && text[0] == 'g' &&
+        text.find_first_not_of("0123456789", 1) == std::string::npos)
+        return text;
+    return fallback;
+}
 const char *kPromoApps[] = {"com.webos.app.lgchannels",
                             "com.webos.app.sportsteamsettings",
                             "com.webos.app.lifeonscreen", "amazon.alexa.view",
@@ -172,6 +194,10 @@ Json defaultDocument() {
     document.set("showLive", Json::flag(false));
     document.set("openOnPowerOn", Json::flag(false));
     document.set("colours", Json::parse("null"));
+    document.set("motion", Json::text("subtle"));
+    document.set("wallpaper", Json::text(""));
+    document.set("wallpaperMode", Json::text("auto"));
+    document.set("wallpaperRotate", Json::text("off"));
     document.set("profiles", Json::array());
     document.set("profile", Json::text(kMainProfile));
     document.set("hideLgHomeAtStart", Json::parse("null"));
@@ -351,6 +377,10 @@ Json normalizeHomeDocument(const Json &raw) {
     result.set("showLive", Json::flag(raw["showLive"].boolean()));
     result.set("openOnPowerOn", Json::flag(raw["openOnPowerOn"].boolean()));
     result.set("colours", validColours(raw["colours"]));
+    result.set("motion", Json::text(oneOf(raw["motion"], kMotionLevels, "subtle")));
+    result.set("wallpaper", Json::text(wallpaperChoice(raw["wallpaper"], "")));
+    result.set("wallpaperMode", Json::text(oneOf(raw["wallpaperMode"], kWallpaperModes, "auto")));
+    result.set("wallpaperRotate", Json::text(oneOf(raw["wallpaperRotate"], kRotateMinutes, "off")));
 
     Json profiles = Json::array();
     if (raw["profiles"].isArray()) {
@@ -466,6 +496,14 @@ HomeDocumentUpdate updateHomeLayout(const Json &input, const Json &body) {
         body["clockFormat"].string() == "24h" ? body["clockFormat"].string()
                                                : current["clockFormat"].string()));
     proposed.set("colours", body.has("colours") ? body["colours"] : current["colours"]);
+    proposed.set("motion", Json::text(oneOf(body["motion"], kMotionLevels,
+                                            current["motion"].string())));
+    proposed.set("wallpaper", Json::text(wallpaperChoice(body["wallpaper"],
+                                                         current["wallpaper"].string())));
+    proposed.set("wallpaperMode", Json::text(oneOf(body["wallpaperMode"], kWallpaperModes,
+                                                   current["wallpaperMode"].string())));
+    proposed.set("wallpaperRotate", Json::text(oneOf(body["wallpaperRotate"], kRotateMinutes,
+                                                     current["wallpaperRotate"].string())));
     Json next = normalizeHomeDocument(proposed);
     if (body["reset"].boolean()) {
         const Json defaults = defaultDocument();

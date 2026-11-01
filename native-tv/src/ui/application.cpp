@@ -1,5 +1,6 @@
 #include "ui/application.hpp"
 #include "ui/controller_helpers.hpp"
+#include "ui/kit/ambience.hpp"
 #include "ui/kit/components.hpp"
 #include "ui/kit/tuning.hpp"
 #include "ui/home_layout.hpp"
@@ -124,6 +125,7 @@ bool Application::update(uint32_t now) {
         return true;
     clock_.tick();
     bool moved = motion_.update(clock_);
+    keepAtmosphere();
     updateWallpaperTransition();
     if (static_cast<int32_t>(now_ - refreshAt_) >= 0)
         refresh();
@@ -164,6 +166,36 @@ void Application::idleUpdate() {
         flow_.idle = true;
         motion_.tween("dim", .66, kit::motion::ms::idleDim, kit::easing(kit::motion::ease::inOut));
     }
+}
+// Fork: the animation level from Home's layout, read once per frame.
+kit::MotionLevel Application::motionLevel() const {
+    return kit::motionLevelOf(state_.catalogue["layout"]["motion"].string());
+}
+// The aurora, the motes and the wallpaper drift move by the frame clock, so they need frames: an
+// ambient tween keeps the loop at its half rate while they are on screen. Nothing runs while the
+// client is hidden (update() returns before this), once the screen has dimmed for idleness, with
+// the level Off, or under the splash and setup.
+void Application::keepAtmosphere() {
+    const bool wanted = motionLevel() != kit::MotionLevel::Off && !flow_.idle &&
+                        state_.screen != Screen::Splash && state_.screen != Screen::Setup &&
+                        !coveredForCaps();
+    if (!wanted || motion_.moving("atmosphere"))
+        return;
+    motion_.ambient("atmosphere");
+    motion_.play("atmosphere", Tween(0, 1, 4000, Easing::linear()));
+}
+// Fork: a page opened over Home, or Home coming back from one, rises in from the ink.
+void Application::playPageEnter() {
+    if (motionLevel() == kit::MotionLevel::Off)
+        return;
+    const bool full = motionLevel() == kit::MotionLevel::Full;
+    motion_.play("pagein", Tween(1, 0, full ? 340 : 240, kit::easing(kit::motion::ease::out)));
+}
+void Application::drawPageEnter(kit::Paint &paint) {
+    float hidden = static_cast<float>(motion_.value("pagein"));
+    if (hidden > .002f)
+        paint.scene.shape({0, 0, kit::canvas::width, kit::canvas::height},
+                          kit::focus::withAlpha(kit::color::ink, .9f * hidden));
 }
 // Input of any kind: true when the screen was dimmed, so that this one only woke it.
 bool Application::wake() {
@@ -315,6 +347,7 @@ void Application::resolvePictures() {
 }
 void Application::buildFrame() {
     scene_.reset();
+    kit::setMotionLevel(motionLevel());
     kit::Paint paint{scene_, *glyphs_};
     Scene &scene = scene_;
     Frame frame{state_, motion_, static_cast<double>(now_)};
@@ -329,14 +362,26 @@ void Application::buildFrame() {
     }
     if (screen_) {
         scene.background = kit::color::ink;
-        if (!screen_->paintsWall())
+        const bool ownWall = screen_->paintsWall();
+        if (!ownWall) {
             kit::ambientWall(paint, 1, state_.home.art.wallTint);
+            kit::aurora(paint, now_ / 1000.0, .8f, state_.home.art.wallTint);
+        }
+        // The page rises the last few pixels as it comes in from the ink (playPageEnter).
+        const float rise = ownWall ? 0 : 22 * static_cast<float>(motion_.value("pagein"));
+        if (rise > .05f)
+            scene.pushTransform(Transform::translate(0, rise));
         screen_->build(*this, paint);
+        if (rise > .05f)
+            scene.popTransform();
         if (screen_->hasBar())
             drawTopBar(paint, frame, screen_->barTab());
-    } else if (state_.screen == Screen::Home)
+        if (!ownWall)
+            drawPageEnter(paint);
+    } else if (state_.screen == Screen::Home) {
         drawHome(paint, frame);
-    else if (isRecents()) {
+        drawPageEnter(paint);
+    } else if (isRecents()) {
         drawHome(paint, frame);
         drawRecents(paint, frame);
     } else if (state_.screen == Screen::Kit)

@@ -10,6 +10,9 @@ void Application::route(const std::string &path) {
     clearPicture();
     bool fromRecents = isRecents();
     const std::string origin = screen_ ? currentRoute_ : state_.screen == Screen::Home ? "home" : "";
+    // Fork: a full page (one that does not sit over Home like the Quick drawer) hands over with a
+    // short rise from the ink, both ways (Application::playPageEnter).
+    const bool fromPage = screen_ && !screen_->paintsWall();
     if (screen_) {
         screen_->leave(*this);
         screen_.reset();
@@ -30,6 +33,8 @@ void Application::route(const std::string &path) {
             state_.screen = Screen::Kit; // no older view draws while a registered screen does
             state_.kitComponent = path;
             screen_->enter(*this);
+            if (!screen_->paintsWall())
+                playPageEnter();
             homeFocus(true);
             refresh();
             dirty_ = true;
@@ -58,6 +63,8 @@ void Application::route(const std::string &path) {
         state_.kitComponent = path.substr(4);
     } else if (path == "home" || path == "home:resume") {
         state_.screen = Screen::Home;
+        if (fromPage)
+            playPageEnter();
         // Coming back from the recents or an overlay keeps the page as it was; any other screen
         // starts it again (so does a Home whose entrance never played).
         if (!fromRecents && (path == "home" || !flow_.entered))

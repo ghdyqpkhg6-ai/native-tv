@@ -832,6 +832,7 @@ if(NATIVETV_BUILD_CLIENT)
   target_include_directories(nanosvg PUBLIC third_party/nanosvg)
   add_library(nativetv_presentation
     src/ui/scene.cpp src/ui/kit/components.cpp src/ui/kit/widgets.cpp src/ui/kit/gallery.cpp
+    src/ui/kit/ambience.cpp
     src/ui/application.cpp src/ui/navigation.cpp src/ui/input.cpp
     src/ui/menu_controller.cpp src/ui/data_controller.cpp
     src/ui/home_view.cpp src/ui/menu_view.cpp

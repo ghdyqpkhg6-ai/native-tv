@@ -1,4 +1,5 @@
 #include "ui/kit/widgets.hpp"
+#include "ui/kit/ambience.hpp"
 #include "ui/kit/overlay.hpp"
 #include <algorithm>
 #include <cmath>
@@ -439,12 +440,13 @@ void row(Paint paint, const Row &row) {
          faded(color::onSurface2, focus::dimmedRowAlpha(row.dim)));
 }
 void card(Paint paint, const PosterCard &poster) {
-    focus::Look look = focus::lookAt(poster.rest, motion::scale::card, poster.focus);
+    focus::Look look = focus::lookAt(poster.rest, zoomTarget(motion::scale::card), poster.focus);
     if (invisible(poster.enter) || offCanvas(look.rect))
         return;
     Scene &scene = paint.scene;
     Transform scale = focus::transformAt(poster.rest, look.scale);
     Group group(scene, poster.enter, look.scale != 1 ? &scale : nullptr);
+    focusGlow(scene, poster.rest, radius::md, color::accent, poster.focus);
     applyFocus(scene.shape(poster.rest, color::surface2, radius::md), look);
     if (!poster.image.empty())
         scene.picture(poster.rest, 0, radius::md).value = poster.image;
@@ -469,13 +471,15 @@ void card(Paint paint, const PosterCard &poster) {
     hit(scene, look.rect, poster.id);
 }
 void appCircle(Paint paint, const AppCircle &circle) {
-    focus::Look look = focus::lookAt(circle.rest, motion::scale::app, circle.focus);
+    focus::Look look = focus::lookAt(circle.rest, zoomTarget(motion::scale::app), circle.focus);
     if (invisible(circle.enter) || offCanvas(look.rect))
         return;
     Scene &scene = paint.scene;
     Transform scale = focus::transformAt(circle.rest, look.scale);
     Group group(scene, circle.enter, look.scale != 1 ? &scale : nullptr);
     float rounding = circle.rest.h / 2;
+    // The glow takes the app's own colour, so Netflix glows red and YouTube white.
+    focusGlow(scene, circle.rest, rounding, circle.color, circle.focus);
     // The ring and the shadow belong to the circle, not to its fill, which is hidden once an
     // opaque picture covers it (Node::backing).
     if (look.ringAlpha > 0)
@@ -513,7 +517,7 @@ void appCircle(Paint paint, const AppCircle &circle) {
     hit(scene, look.rect, circle.id);
 }
 void inputTile(Paint paint, const InputTile &tile) {
-    focus::Look look = focus::lookAt(tile.rest, motion::scale::input, tile.focus);
+    focus::Look look = focus::lookAt(tile.rest, zoomTarget(motion::scale::input), tile.focus);
     if (invisible(tile.enter) || offCanvas(look.rect))
         return;
     Scene &scene = paint.scene;
@@ -522,6 +526,7 @@ void inputTile(Paint paint, const InputTile &tile) {
     if (tile.unused)
         enter.alpha *= .62f;
     Group group(scene, enter, look.scale != 1 ? &scale : nullptr);
+    focusGlow(scene, tile.rest, radius::md, color::accent, tile.focus);
     Node &base = scene.shape(tile.rest, color::surface2, radius::md);
     restOutline(base);
     if (look.ringAlpha > 0)

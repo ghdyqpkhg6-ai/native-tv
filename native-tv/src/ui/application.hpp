@@ -1,6 +1,7 @@
 #pragma once
 #include "core/services.hpp"
 #include "domain/models.hpp"
+#include "ui/kit/ambience.hpp"
 #include "ui/kit/widgets.hpp"
 #include "ui/motion/motion.hpp"
 #include "ui/optimistic.hpp"
@@ -192,6 +193,11 @@ class Application : private ScreenHost {
     void idleUpdate();
     bool wake();
     void drawIdleDim(kit::Paint &paint);
+    // Fork: Home's animation level and what follows from it (application.cpp).
+    kit::MotionLevel motionLevel() const;
+    void keepAtmosphere();
+    void playPageEnter();
+    void drawPageEnter(kit::Paint &paint);
     void homeBeat(const Response *reply);
     void resolvePictures();
     void buildFrame();

@@ -76,6 +76,37 @@ const LayoutSwitch kSwitches[] = {{"clockFormat", "clock"}, {"appNames", "apps"}
                                   {"showLive", "tv"},       {"showInputs", "hdmi"},
                                   {"showLgHome", "home"},   {"picture", "display"}};
 const char *kSleep[] = {"off", "10", "30", "60", "90", "120"};
+// Fork: Home settings rows that step through a list of values (Left and Right, or OK for the next
+// one), saved in the Home layout like the switches.
+struct LayoutChoice {
+    const char *key, *icon, *fallback;
+    std::vector<const char *> values;
+};
+const LayoutChoice kChoices[] = {
+    {"motion", "speed", "subtle", {"off", "subtle", "full"}},
+    {"wallpaperMode", "display", "auto", {"auto", "fit", "fill", "blur"}},
+    {"wallpaperRotate", "timer", "off", {"off", "5", "15", "30", "60"}}};
+const LayoutChoice *layoutChoice(const std::string &key) {
+    for (const LayoutChoice &choice : kChoices)
+        if (key == choice.key)
+            return &choice;
+    return nullptr;
+}
+std::string choiceLabel(const std::string &key, const std::string &value) {
+    if (key == "motion")
+        return value == "off"    ? msg("tv.quick.motionOff", "Off")
+               : value == "full" ? msg("tv.quick.motionFull", "Full")
+                                 : msg("tv.quick.motionSubtle", "Subtle");
+    if (key == "wallpaperMode")
+        return value == "fit"    ? msg("tv.quick.wallFit", "Fit")
+               : value == "fill" ? msg("tv.quick.wallFill", "Fill")
+               : value == "blur" ? msg("tv.quick.wallBlur", "Blur background")
+                                 : msg("tv.quick.wallAuto", "Automatic");
+    if (key == "wallpaperRotate")
+        return value == "off" ? msg("tv.quick.off", "Off")
+                              : msg("tv.quick.minutes", "{n} min", fields({{"n", Json::text(value)}}));
+    return value;
+}
 
 double clamp(double value, double low, double high) {
     return std::max(low, std::min(high, value));
@@ -175,7 +206,8 @@ class QuickScreen final : public ScreenView {
         // The switches follow what is shown, so a refusal that takes one back moves it back.
         if (level_ == Level::Layout)
             for (size_t i = 0; i < rows_.size(); ++i)
-                host.motion().tween("quick:t:" + std::to_string(i), layoutFlag(host, rows_[i].id) ? 1 : 0,
+                if (rows_[i].kind == Row::Kind::Switch)
+                    host.motion().tween("quick:t:" + std::to_string(i), layoutFlag(host, rows_[i].id) ? 1 : 0,
                                     kit::motion::ms::fast, easing(kit::motion::ease::out));
         // The spinner turns while anything is being read.
         return !loaded_ || retryAt_ > 0;
@@ -371,6 +403,33 @@ class QuickScreen final : public ScreenView {
     bool layoutFlag(ScreenHost &host, const std::string &key) {
         return host.optimistic().flag("layout." + key, layoutServer(host, key));
     }
+    // Fork: a stepping row's value, as the server has it and as it is shown.
+    static std::string layoutServerText(const ScreenHost &host, const LayoutChoice &choice) {
+        const std::string value = host.view().catalogue["layout"][choice.key].string();
+        for (const char *candidate : choice.values)
+            if (value == candidate)
+                return value;
+        return choice.fallback;
+    }
+    std::string layoutText(ScreenHost &host, const LayoutChoice &choice) {
+        return host.optimistic().text(std::string("layout.") + choice.key, layoutServerText(host, choice));
+    }
+    void stepChoice(ScreenHost &host, const LayoutChoice &choice, int direction) {
+        const std::string current = layoutText(host, choice);
+        const size_t count = choice.values.size();
+        size_t at = 0;
+        for (size_t i = 0; i < count; ++i)
+            if (current == choice.values[i])
+                at = i;
+        const size_t next = direction > 0 ? (at + 1) % count : (at + count - 1) % count;
+        host.optimistic().set(std::string("layout.") + choice.key, Json::text(choice.values[next]),
+                              Json::text(layoutServerText(host, choice)), layoutWrite(choice.key));
+        host.invalidate();
+    }
+    // The gallery's pictures are listed with the wallpapers once the TV has some.
+    static bool hasGallery(const ScreenHost &host) {
+        return host.view().catalogue["wallpapers"]["gallery"].size() > 0;
+    }
     // For the snapshot and for the held-key checks: what is shown now, and whether it ever went
     // against the key that is held.
     void syncShown(ScreenHost &host) {
@@ -445,6 +504,9 @@ class QuickScreen final : public ScreenView {
     std::string trail(ScreenHost &host, const Row &row) {
         if (row.kind != Row::Kind::Plain)
             return row.trail;
+        if (level_ == Level::Layout)
+            if (const LayoutChoice *choice = layoutChoice(row.id))
+                return choiceLabel(row.id, layoutText(host, *choice));
         if (readFailed_ && readsStats(row.id))
             return "—";
         if (row.id == "picture") {
@@ -536,6 +598,13 @@ class QuickScreen final : public ScreenView {
                 {"showInputs", msg("tv.quick.showInputs", "Inputs tab")},
                 {"showLgHome", msg("tv.quick.showLgHome", "LG Home tile")},
                 {"picture", msg("tv.quick.picture", "Picture details")}};
+            add(Row::Kind::Plain, "motion", "speed", msg("tv.quick.motion", "Animations"));
+            if (hasGallery(host)) {
+                add(Row::Kind::Plain, "wallpapers", "palette", msg("tv.quick.wallpapers", "Wallpapers"), "",
+                    true);
+                add(Row::Kind::Plain, "wallpaperMode", "display", msg("tv.quick.wallMode", "Wallpaper fit"));
+                add(Row::Kind::Plain, "wallpaperRotate", "timer", msg("tv.quick.wallRotate", "Change wallpaper"));
+            }
             for (const LayoutSwitch &entry : kSwitches)
                 for (const auto &title : titles)
                     if (title.first == entry.key)
@@ -576,6 +645,10 @@ class QuickScreen final : public ScreenView {
             return msg("tv.quick.volumeHint", "Left and Right adjust. OK mutes.");
         if (level_ == Level::Main && row.id == "light")
             return msg("tv.quick.lightHint", "Left and Right adjust.");
+        if (level_ == Level::Layout && layoutChoice(row.id))
+            return msg("tv.quick.stepHint", "Left and Right change it. Back returns.");
+        if (level_ == Level::Layout && row.id == "wallpapers")
+            return msg("tv.quick.galleryHint", "OK opens the gallery. Back returns.");
         if (level_ == Level::Layout)
             return msg("tv.quick.switchHint", "OK switches. Left or Back returns.");
         if (level_ != Level::Main)
@@ -638,7 +711,8 @@ class QuickScreen final : public ScreenView {
         } else if (!waiting) {
             item.value = trail(host, row);
             // The rows Left and Right step through the values of show a chevron on each side.
-            item.stepper = level_ == Level::Main && steps(row.id) && loaded_ && !dim;
+            item.stepper = (level_ == Level::Main && steps(row.id) && loaded_ && !dim) ||
+                           (level_ == Level::Layout && layoutChoice(row.id) != nullptr);
         }
         kit::settingsRow(paint, item);
         float right = rest.x + rest.w - layout::srowPadRight;
@@ -733,6 +807,11 @@ class QuickScreen final : public ScreenView {
             return;
         const Row &row = rows_[focus_];
         if (level_ != Level::Main) {
+            if (level_ == Level::Layout)
+                if (const LayoutChoice *choice = layoutChoice(row.id)) {
+                    stepChoice(host, *choice, direction);
+                    return;
+                }
             if (direction < 0)
                 toMain(host);
             return;
@@ -853,6 +932,14 @@ class QuickScreen final : public ScreenView {
     }
     void choose(ScreenHost &host, const Row &row) {
         if (level_ == Level::Layout) {
+            if (const LayoutChoice *choice = layoutChoice(row.id)) {
+                stepChoice(host, *choice, 1);
+                return;
+            }
+            if (row.id == "wallpapers") {
+                close(host, "wallpapers");
+                return;
+            }
             bool on = !layoutFlag(host, row.id);
             host.optimistic().set("layout." + row.id, Json::flag(on), Json::flag(layoutServer(host, row.id)),
                                   layoutWrite(row.id));

@@ -1,6 +1,7 @@
 // Home and Apps drawn on the kit from the controller's state and the motion engine's values.
 #include "ui/application.hpp"
 #include "ui/home_layout.hpp"
+#include "ui/kit/ambience.hpp"
 #include "ui/kit/entry.hpp"
 #include "ui/kit/overlay.hpp"
 #include <algorithm>
@@ -54,8 +55,24 @@ std::string initialOf(const ViewState &state) {
     return name.substr(0, end);
 }
 
-void wallpaper(Scene &scene, const HomeState &home) {
+void wallpaper(Scene &scene, const HomeState &home, const Transform &drift) {
     const Rect stage = {0, 0, kit::canvas::width, kit::canvas::height};
+    // The drift scales the picture past the screen; the clip keeps it there.
+    const bool drifting = !drift.identity();
+    if (drifting) {
+        scene.pushClip(stage);
+        scene.pushTransform(drift);
+    }
+    struct Popper {
+        Scene &scene;
+        bool on;
+        ~Popper() {
+            if (on) {
+                scene.popTransform();
+                scene.popClip();
+            }
+        }
+    } popper{scene, drifting};
     if (home.wallpaperTransition) {
         if (!home.wallpaperFrom.empty())
             scene.image(stage, home.wallpaperFrom, 0, false,
@@ -342,13 +359,19 @@ void drawHome(kit::Paint paint, const Frame &frame) {
     if (home.tabs.empty())
         return;
     const bool apps = home.tabs[home.tab].key == "apps";
-    wallpaper(scene, home);
+    const double seconds = frame.nowMs / 1000.0;
+    const float stack = static_cast<float>(motion.value("sy"));
+    wallpaper(scene, home, kit::wallpaperDrift(seconds, stack));
     float wall = static_cast<float>(motion.value("wall"));
     kit::ambientWall(paint, 1 - wall, home.art.wallTint);
+    // The aurora lives on the wall and the wallpaper, under any art: a film's picture covers it.
+    kit::aurora(paint, seconds, 1 - wall, home.art.wallTint, stack);
+    kit::motes(paint, seconds, 1 - wall);
     if (apps) {
         kit::Hero none = heroOf(frame);
         none.wallAlpha = wall;
         kit::heroWall(paint, none);
+        kit::auroraFloor(paint, seconds, wall, home.art.wallTint);
         if (home.grid)
             grid(paint, frame);
         else
@@ -356,6 +379,8 @@ void drawHome(kit::Paint paint, const Frame &frame) {
     } else {
         kit::Hero hero = heroOf(frame);
         kit::heroWall(paint, hero);
+        // Over the hero's shade at the bottom, where the rows sit, never over the picture.
+        kit::auroraFloor(paint, seconds, wall, home.art.wallTint);
         kit::heroText(paint, hero);
         if (home.spotlight.size() > 1) {
             kit::Pagination dots;
