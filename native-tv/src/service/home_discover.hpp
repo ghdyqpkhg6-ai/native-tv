@@ -32,8 +32,13 @@ class HomeDiscover {
     // Whether a title has a Netflix link: the feed's "Available on Netflix" row lists the titles trending this
     // week that it says yes to. Without one, there is no such row.
     void setNetflixCheck(LinkCheck check);
+    // Fork: the signed-in YouTube account's row ("subs"), added to every feed as it is; invalid
+    // Json while there is none. It keeps its own cache and pace (youtube_account.hpp).
+    using ExtraRow = std::function<Json()>;
+    void setSubscriptions(ExtraRow row);
 
   private:
+    ExtraRow subscriptions_;
     void workerLoop();
     void refresh(const std::string &tmdbKey, const std::string &youtubeKey);
     bool fetch(const std::string &url, Json &document, std::string &error);

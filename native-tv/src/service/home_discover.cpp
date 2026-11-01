@@ -298,12 +298,27 @@ void HomeDiscover::setNetflixCheck(LinkCheck check) {
     netflixCheck_ = std::move(check);
 }
 
+void HomeDiscover::setSubscriptions(ExtraRow row) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    subscriptions_ = std::move(row);
+}
+
 Json HomeDiscover::feed(const std::string &tmdbKey, const std::string &youtubeKey) {
     Json response = Json::object();
     response.set("ok", Json::flag(true));
+    ExtraRow subscriptions;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        subscriptions = subscriptions_;
+    }
+    const Json subsRow = subscriptions ? subscriptions() : Json();
     if (tmdbKey.empty() && youtubeKey.empty()) {
-        response.set("enabled", Json::flag(false));
-        response.set("rows", Json::array());
+        Json rows = Json::array();
+        if (subsRow.isObject())
+            rows.add(subsRow);
+        response.set("enabled", Json::flag(subsRow.isObject()));
+        response.set("titlesEnabled", Json::flag(false));
+        response.set("rows", rows);
         return response;
     }
 
@@ -325,7 +340,10 @@ Json HomeDiscover::feed(const std::string &tmdbKey, const std::string &youtubeKe
 
     response.set("enabled", Json::flag(true));
     response.set("titlesEnabled", Json::flag(!tmdbKey.empty()));
-    response.set("rows", responseRows(rows, tmdbKey, youtubeKey));
+    Json visible = responseRows(rows, tmdbKey, youtubeKey);
+    if (subsRow.isObject())
+        visible.add(subsRow);
+    response.set("rows", visible);
     return response;
 }
 

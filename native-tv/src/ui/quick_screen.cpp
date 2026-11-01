@@ -678,6 +678,7 @@ class QuickScreen final : public ScreenView {
                 add(Row::Kind::Plain, "wallpaperRotate", "timer", msg("tv.quick.wallRotate", "Change wallpaper"));
             }
             add(Row::Kind::Plain, "feedRows", "apps", msg("tv.quick.rows", "Home rows"), "", true);
+            add(Row::Kind::Plain, "youtubeAccount", "play", msg("tv.quick.youtube", "YouTube account"), "", true);
             for (const LayoutSwitch &entry : kSwitches)
                 for (const auto &title : titles)
                     if (title.first == entry.key)
@@ -722,6 +723,8 @@ class QuickScreen final : public ScreenView {
             return msg("tv.quick.stepHint", "Left and Right change it. Back returns.");
         if (level_ == Level::Layout && row.id == "wallpapers")
             return msg("tv.quick.galleryHint", "OK opens the gallery. Back returns.");
+        if (level_ == Level::Layout && (row.id == "feedRows" || row.id == "youtubeAccount"))
+            return msg("tv.quick.openHint", "OK opens it. Back returns.");
         if (level_ == Level::Rows)
             return msg("tv.quick.rowsHint", "OK shows or hides it. Left and Right move it. Back returns.");
         if (level_ == Level::Layout)
@@ -1036,6 +1039,10 @@ class QuickScreen final : public ScreenView {
         }
         if (level_ == Level::Layout && row.id == "feedRows") {
             openLevel(host, Level::Rows);
+            return;
+        }
+        if (level_ == Level::Layout && row.id == "youtubeAccount") {
+            close(host, "youtube-account");
             return;
         }
         if (level_ == Level::Layout) {

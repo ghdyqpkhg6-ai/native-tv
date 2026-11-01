@@ -148,6 +148,12 @@ std::string legacyRoute(Operation operation, const Json &arguments) {
         return "/api/settings";
     case Operation::AdminUnlock:
         return "/api/admin/unlock";
+    case Operation::YouTubeAccount:
+        return "/api/youtube/account";
+    case Operation::YouTubeLink:
+        return "/api/youtube/account/link";
+    case Operation::YouTubeUnlink:
+        return "/api/youtube/account/unlink";
     case Operation::None:
         break;
     }

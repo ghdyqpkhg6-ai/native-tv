@@ -46,6 +46,10 @@ enum class Operation {
     ConfirmPackage,
     CancelPackage,
     Settings, // /api/settings: the dashboard's MQTT and device settings (setup's broker entry)
-    AdminUnlock // /api/admin/unlock: the four-digit admin PIN, answered with a session
+    AdminUnlock, // /api/admin/unlock: the four-digit admin PIN, answered with a session
+    // Fork: the YouTube account for the subscriptions row (youtube_account.hpp).
+    YouTubeAccount, // GET /api/youtube/account
+    YouTubeLink,    // POST /api/youtube/account/link
+    YouTubeUnlink   // POST /api/youtube/account/unlink
 };
 }

@@ -44,6 +44,8 @@ const GuardedRoute kGuardedRoutes[] = {
     {"/api/home/recents", ContentTypeRule::JsonPrefix},
     {"/api/home/beat", ContentTypeRule::JsonPrefix},
     {"/api/home/wallpapers/upload", ContentTypeRule::JpegExact},
+    {"/api/youtube/account/link", ContentTypeRule::JsonPrefix},
+    {"/api/youtube/account/unlink", ContentTypeRule::JsonPrefix},
     {"/api/quickaccess", ContentTypeRule::JsonPrefix},
     {"/api/remotekeys", ContentTypeRule::JsonPrefix},
     {"/api/preload/toggle", ContentTypeRule::JsonPrefix},

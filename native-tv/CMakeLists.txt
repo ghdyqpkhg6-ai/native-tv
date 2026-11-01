@@ -141,7 +141,7 @@ add_library(nativetv_tv_services src/service/control_commands.cpp
   src/service/home_picture.cpp src/service/home_now.cpp
   src/service/home_open.cpp
   src/service/home_content.cpp src/service/home_discover.cpp
-  src/service/home_image_proxy.cpp)
+  src/service/home_image_proxy.cpp src/service/youtube_account.cpp)
 target_link_libraries(nativetv_tv_services PUBLIC nativetv_core nativetv_names
   PkgConfig::CURL ZLIB::ZLIB)
 target_compile_options(nativetv_tv_services PRIVATE -Wall -Wextra -Werror)
@@ -844,7 +844,7 @@ if(NATIVETV_BUILD_CLIENT)
     src/ui/settings_screen.cpp src/ui/catalog_screen.cpp
     src/ui/kit/overlay.cpp src/ui/quick_screen.cpp src/ui/profiles_screen.cpp
     src/ui/details_screen.cpp src/ui/editor_screen.cpp src/ui/pin_screen.cpp
-    src/ui/wallpaper_screen.cpp)
+    src/ui/wallpaper_screen.cpp src/ui/youtube_screen.cpp)
   target_link_libraries(nativetv_presentation PUBLIC nativetv_models nativetv_motion nativetv_say qrcodegen)
   target_compile_options(nativetv_presentation PRIVATE -Wall -Wextra -Werror)
   add_library(nativetv_http src/adapters/http_services.cpp src/adapters/legacy_routes.cpp)

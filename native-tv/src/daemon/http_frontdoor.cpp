@@ -1759,6 +1759,7 @@ HttpFrontDoor::HttpFrontDoor(ServerConfig config, std::string version, std::stri
       adminPin_(dataFilePath(dataRoot_, "admin-pin.json")),
       homeContent_(dataRoot_),
       homeDiscover_(dataRoot_),
+      youtubeAccount_(dataRoot_),
       homeImageProxy_(dataRoot_),
       configPath_(std::move(configPath)), hdmiSeenPath_(dataFilePath(dataRoot_, "hdmi_seen")),
       lastAppPath_(dataFilePath(dataRoot_, "last_app.json")),
@@ -1803,6 +1804,12 @@ HttpFrontDoor::HttpFrontDoor(ServerConfig config, std::string version, std::stri
         if (!document["netflixDeepLinks"].boolean()) return false;
         const Json lookup = homeContent_.netflix(document["tmdbKey"].string(), true, type, id);
         return lookup["ok"].boolean(true) && !lookup["netflixId"].string().empty();
+    });
+    // Fork: the signed-in YouTube account's subscriptions join the feed (youtube_account.hpp).
+    homeDiscover_.setSubscriptions([this]() {
+        const Json document = currentConfigDocument();
+        return youtubeAccount_.subscriptionsRow(document["youtubeClientId"].string(),
+                                                document["youtubeClientSecret"].string());
     });
     lgSettingsCacheSettings_ = Json::object();
     lgSettingsCacheDescriptions_ = Json::object();
@@ -17892,6 +17899,28 @@ void HttpFrontDoor::dispatch(HttpExchange &exchange) const {
     if (request.uri == "/api/home/discover" && request.method == "GET") {
         sendHomeDiscover(exchange);
         return;
+    }
+    // Fork: signing a YouTube account in and out (youtube_account.hpp). Nothing secret is sent back:
+    // the code shown on the TV is the one the person types at google.com/device.
+    if (request.uri.compare(0, 20, "/api/youtube/account") == 0) {
+        const Json document = currentConfigDocument();
+        const std::string clientId = document["youtubeClientId"].string();
+        const std::string clientSecret = document["youtubeClientSecret"].string();
+        Json result;
+        if (request.uri == "/api/youtube/account" && request.method == "GET")
+            result = youtubeAccount_.status(clientId, clientSecret);
+        else if (request.uri == "/api/youtube/account/link" && request.method == "POST")
+            result = youtubeAccount_.link(clientId, clientSecret);
+        else if (request.uri == "/api/youtube/account/unlink" && request.method == "POST")
+            result = youtubeAccount_.unlink();
+        if (result.valid()) {
+            (void)exchange.respond(200,
+                                   {{"Content-Type", "application/json; charset=utf-8"},
+                                    {"Cache-Control", "no-store"},
+                                    {"X-Content-Type-Options", "nosniff"}},
+                                   result.dump());
+            return;
+        }
     }
     if (request.uri == "/api/home/image" && request.method == "GET") {
         sendHomeImage(exchange);

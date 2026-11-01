@@ -14,6 +14,7 @@
 #include "service/cpu_windows.hpp"
 #include "service/home_content.hpp"
 #include "service/home_discover.hpp"
+#include "service/youtube_account.hpp"
 #include "service/home_image_proxy.hpp"
 #include "service/home_picture.hpp"
 #include "service/home_open.hpp"
@@ -430,6 +431,7 @@ class HttpFrontDoor {
     mutable service::AdminPin adminPin_;
     mutable service::HomeContent homeContent_;
     mutable service::HomeDiscover homeDiscover_;
+    mutable service::YouTubeAccount youtubeAccount_; // fork: subscriptions row
     mutable service::HomeImageProxy homeImageProxy_;
     std::string configPath_;
     std::string hdmiSeenPath_;
