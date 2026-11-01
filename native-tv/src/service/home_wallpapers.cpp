@@ -21,6 +21,24 @@ bool validSlot(const std::string &slot) {
            slot == "night";
 }
 
+// Fork: the gallery's files, written by fork-tools/prepare-wallpapers.py and copied to
+// home-wallpaper-uploads/gallery/ over SSH: "g07" (Fill), "g07-fit", "g07-blur", "g07-thumb".
+bool galleryId(const std::string &id) {
+    return id.size() >= 2 && id.size() <= 4 && id[0] == 'g' &&
+           id.find_first_not_of("0123456789", 1) == std::string::npos;
+}
+bool galleryName(const std::string &name) {
+    const size_t dash = name.find('-');
+    if (!galleryId(name.substr(0, dash)))
+        return false;
+    if (dash == std::string::npos)
+        return true;
+    const std::string suffix = name.substr(dash);
+    return suffix == "-fit" || suffix == "-blur" || suffix == "-thumb";
+}
+const size_t MAX_GALLERY_JSON_BYTES = 256 * 1024;
+const size_t MAX_GALLERY_ITEMS = 200;
+
 uint16_t readBigEndian16(const std::string &bytes, size_t offset) {
     return static_cast<uint16_t>(
         (static_cast<uint16_t>(static_cast<unsigned char>(bytes[offset])) << 8) |
@@ -52,7 +70,73 @@ void setErrnoError(std::string *error) {
 std::string wallpaperPath(const std::string &slot, const std::string &dataRoot) {
     const std::string root = dataRoot.empty() ? "/var/lib/tvweb" : dataRoot;
     const char *separator = !root.empty() && root[root.size() - 1] == '/' ? "" : "/";
+    if (galleryName(slot))
+        return root + separator + "home-wallpaper-uploads/gallery/" + slot + ".jpg";
     return root + separator + "home-wallpaper-uploads/" + slot + ".jpg";
+}
+
+// The gallery's index, read whole (it is small) with the same care as the pictures.
+bool readGalleryIndex(const std::string &dataRoot, std::string &text) {
+    const std::string root = dataRoot.empty() ? "/var/lib/tvweb" : dataRoot;
+    const char *separator = !root.empty() && root[root.size() - 1] == '/' ? "" : "/";
+    const std::string path = root + separator + "home-wallpaper-uploads/gallery/gallery.json";
+    const int descriptor = open(path.c_str(), O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
+    if (descriptor < 0)
+        return false;
+    struct stat info;
+    if (fstat(descriptor, &info) != 0 || !S_ISREG(info.st_mode) || info.st_size <= 0 ||
+        static_cast<unsigned long long>(info.st_size) > MAX_GALLERY_JSON_BYTES) {
+        close(descriptor);
+        return false;
+    }
+    text.clear();
+    char buffer[16384];
+    for (;;) {
+        const ssize_t count = read(descriptor, buffer, sizeof(buffer));
+        if (count < 0 && errno == EINTR)
+            continue;
+        if (count <= 0 || text.size() + static_cast<size_t>(count) > MAX_GALLERY_JSON_BYTES)
+            break;
+        text.append(buffer, static_cast<size_t>(count));
+    }
+    close(descriptor);
+    return !text.empty();
+}
+
+// What the client needs of each picture: id, name, orientation and the Fit picture's size.
+Json galleryStatus(const std::string &dataRoot, std::string &revision) {
+    Json items = Json::array();
+    std::string text;
+    if (!readGalleryIndex(dataRoot, text))
+        return items;
+    const Json index = Json::parse(text);
+    if (!index.isObject() || !index["items"].isArray())
+        return items;
+    const std::string declared = index["revision"].string();
+    if (!declared.empty() && declared.size() <= 16 &&
+        declared.find_first_not_of("0123456789abcdef") == std::string::npos)
+        revision = declared;
+    for (const Json &item : index["items"].items()) {
+        if (items.size() >= MAX_GALLERY_ITEMS)
+            break;
+        const std::string id = item["id"].string();
+        const std::string kind = item["orientation"].string();
+        const double fitW = item["fitW"].number(), fitH = item["fitH"].number();
+        if (!galleryId(id) || (kind != "landscape" && kind != "portrait" && kind != "square") ||
+            fitW < 1 || fitW > 1920 || fitH < 1 || fitH > 1080)
+            continue;
+        std::string name = item["name"].string();
+        if (name.size() > 80)
+            name.resize(80);
+        Json entry = Json::object();
+        entry.set("id", Json::text(id));
+        entry.set("name", Json::text(name));
+        entry.set("orientation", Json::text(kind));
+        entry.set("fitW", Json::numeric(fitW));
+        entry.set("fitH", Json::numeric(fitH));
+        items.add(entry);
+    }
+    return items;
 }
 
 std::string wallpaperDirectory(const std::string &dataRoot) {
@@ -89,7 +173,7 @@ std::string makeEtag(size_t size, const struct stat &info) {
 HomeWallpaperFile readHomeWallpaper(const std::string &slot,
                                     const std::string &dataRoot) {
     HomeWallpaperFile result;
-    if (!validSlot(slot))
+    if (!validSlot(slot) && !galleryName(slot))
         return result;
     result.validSlot = true;
 
@@ -159,11 +243,17 @@ Json homeWallpaperStatus(const std::string &dataRoot) {
         if (slot != slots[3]) revision.push_back('.');
     }
     if (directory >= 0) close(directory);
+    std::string galleryRevision;
+    const Json gallery = galleryStatus(dataRoot, galleryRevision);
     Json result = Json::object();
     result.set("available", Json::flag(available));
     result.set("uploading", Json::flag(uploading));
     result.set("slots", availableSlots);
-    result.set("revision", Json::text(revision));
+    // The gallery's revision joins the slots', so the client reloads when either changes.
+    result.set("revision", Json::text(galleryRevision.empty() ? revision
+                                                              : revision + ".g" + galleryRevision));
+    result.set("gallery", gallery);
+    result.set("galleryRevision", Json::text(galleryRevision));
     return result;
 }
 

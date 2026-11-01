@@ -7,14 +7,82 @@
 #include "ui/splash.hpp"
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
 
 namespace nativetv {
+// Fork: the blurred sides of a centred gallery picture ("wallpaper:g07-fit@r" ->
+// "wallpaper:g07-blur@r"), and where the centred picture sits on the 1920x1080 canvas.
+std::string wallpaperBackdrop(const std::string &asset) {
+    std::string backdrop = asset;
+    const size_t at = backdrop.find("-fit");
+    if (at != std::string::npos)
+        backdrop.replace(at, 4, "-blur");
+    return backdrop;
+}
+Rect wallpaperFitRect(const WallpaperLook &look) {
+    const float w = look.fitW > 0 ? look.fitW : kit::canvas::width;
+    const float h = look.fitH > 0 ? look.fitH : kit::canvas::height;
+    return {(kit::canvas::width - w) / 2, (kit::canvas::height - h) / 2, w, h};
+}
 namespace {
 constexpr uint32_t kCapsCoverMs = 2500;
+// The size resolvePictures asks a wallpaper layer's picture at, so that waiting for it here and
+// drawing it there share one decode.
+bool wallpaperLoaded(Pictures &pictures, const std::string &asset, const WallpaperLook &look,
+                     uint32_t now) {
+    int width = 1600, height = 900;
+    if (look.mode == "fit" || look.mode == "blur") {
+        const Rect fit = wallpaperFitRect(look);
+        if (fit.w < 1800) {
+            width = pictureTexels(fit.w);
+            height = pictureTexels(fit.h);
+        }
+    }
+    if (pictures.view(asset, width, height, ImageFit::Cover, now).texture == 0)
+        return false;
+    return look.mode != "blur" ||
+           pictures.view(wallpaperBackdrop(asset), 480, 270, ImageFit::Cover, now).texture != 0;
+}
 struct WallpaperChoice {
     std::string asset;
     float opacity = 0;
+    WallpaperLook look;
 };
+// Fork: a gallery picture, chosen in the gallery or, with rotation on, the one the TV's clock has
+// reached since it: every `minutes` the next one, from the chosen one on.
+bool galleryWallpaperAt(const Json &catalogue, int month, int day, int hour, int minute,
+                        WallpaperChoice &choice) {
+    const Json layout = catalogue["layout"];
+    const Json gallery = catalogue["wallpapers"]["gallery"];
+    const std::string chosen = layout["wallpaper"].string();
+    if (!gallery.isArray() || gallery.size() == 0 || chosen == "slots")
+        return false;
+    const std::vector<Json> items = gallery.items();
+    size_t index = 0;
+    for (size_t i = 0; i < items.size(); ++i)
+        if (items[i]["id"].string() == chosen)
+            index = i;
+    const std::string rotate = layout["wallpaperRotate"].string();
+    const int minutes = std::atoi(rotate.c_str());
+    if (minutes > 0) {
+        const long clock = ((static_cast<long>(month) * 31 + day) * 24 + hour) * 60 + minute;
+        index = (index + static_cast<size_t>(clock / minutes)) % items.size();
+    }
+    const Json item = items[index];
+    std::string mode = layout["wallpaperMode"].string();
+    if (mode != "fit" && mode != "fill" && mode != "blur")
+        mode = item["orientation"].string() == "landscape" ? "fill" : "blur";
+    const std::string revision = catalogue["wallpapers"]["galleryRevision"].string();
+    choice.asset = "wallpaper:" + item["id"].string() + (mode == "fill" ? "" : "-fit");
+    if (!revision.empty())
+        choice.asset += "@" + revision;
+    // A picture chosen for itself shows more strongly than the time-of-day washes.
+    choice.opacity = .82f;
+    choice.look.mode = mode;
+    choice.look.fitW = static_cast<float>(item["fitW"].number(kit::canvas::width));
+    choice.look.fitH = static_cast<float>(item["fitH"].number(kit::canvas::height));
+    return true;
+}
 WallpaperChoice wallpaperAt(const Json &catalogue, int hour) {
     static const struct {
         const char *slot;
@@ -148,7 +216,7 @@ bool Application::update(uint32_t now) {
     // The wallpaper is shown once its picture has arrived.
     std::string pending = wallpaperPending();
     if (!pending.empty() && pictures_ &&
-        pictures_->view(pending, 1600, 900, ImageFit::Cover, now_).texture != 0)
+        wallpaperLoaded(*pictures_, pending, state_.home.wallpaperTargetLook, now_))
         imageReady(pending);
     bool draw = dirty_ || moved || state_.home.wallpaperTransition || screenBusy;
     ambientOnly_ = moved && motion_.ambientOnly() && !dirty_ && !state_.home.wallpaperTransition &&
@@ -222,9 +290,12 @@ void Application::attach(kit::Glyphs &glyphs, Pictures &pictures) {
 void Application::syncWallpaper() {
     if (!active_ || !state_.catalogue.valid())
         return;
-    WallpaperChoice choice = wallpaperAt(state_.catalogue, state_.hour);
+    WallpaperChoice choice;
+    if (!galleryWallpaperAt(state_.catalogue, state_.month, state_.day, state_.hour, state_.minute,
+                            choice))
+        choice = wallpaperAt(state_.catalogue, state_.hour);
     auto &home = state_.home;
-    if (home.wallpaperTarget == choice.asset &&
+    if (home.wallpaperTarget == choice.asset && home.wallpaperTargetLook == choice.look &&
         std::fabs(home.wallpaperTargetOpacity - choice.opacity) < .001f)
         return;
     if (home.wallpaperTransition) {
@@ -237,6 +308,7 @@ void Application::syncWallpaper() {
         services_.cancel("image:" + home.wallpaperTarget);
     home.wallpaperTarget = choice.asset;
     home.wallpaperTargetOpacity = choice.opacity;
+    home.wallpaperTargetLook = choice.look;
     home.wallpaperFailed = false;
     if (home.wallpaperTarget.empty()) {
         if (!home.wallpaperShown.empty())
@@ -256,10 +328,12 @@ void Application::syncWallpaper() {
 void Application::startWallpaperTransition() {
     auto &home = state_.home;
     if (home.wallpaperTarget == home.wallpaperShown &&
+        home.wallpaperTargetLook == home.wallpaperShownLook &&
         std::fabs(home.wallpaperTargetOpacity - home.wallpaperShownOpacity) < .001f)
         return;
     home.wallpaperFrom = home.wallpaperShown;
     home.wallpaperFromOpacity = home.wallpaperShownOpacity;
+    home.wallpaperFromLook = home.wallpaperShownLook;
     home.wallpaperProgress = 0;
     home.wallpaperTransitionAt = now_;
     home.wallpaperTransition = true;
@@ -270,9 +344,11 @@ void Application::finishWallpaperTransition(bool chooseTarget) {
     if (chooseTarget) {
         home.wallpaperShown = home.wallpaperTarget;
         home.wallpaperShownOpacity = home.wallpaperTargetOpacity;
+        home.wallpaperShownLook = home.wallpaperTargetLook;
     } else {
         home.wallpaperShown = home.wallpaperFrom;
         home.wallpaperShownOpacity = home.wallpaperFromOpacity;
+        home.wallpaperShownLook = home.wallpaperFromLook;
     }
     home.wallpaperFrom.clear();
     home.wallpaperTransition = false;
@@ -306,6 +382,7 @@ std::string Application::wallpaperPending() const {
     const auto &home = state_.home;
     if (!home.wallpaperTransition && !home.wallpaperTarget.empty() &&
         (home.wallpaperTarget != home.wallpaperShown ||
+         home.wallpaperTargetLook != home.wallpaperShownLook ||
          std::fabs(home.wallpaperTargetOpacity - home.wallpaperShownOpacity) >= .001f))
         return home.wallpaperTarget;
     return "";
@@ -331,8 +408,11 @@ void Application::resolvePictures() {
             node.value.compare(0, 6, "local:") == 0 || node.value.compare(0, 3, "qr:") == 0)
             continue;
         bool wide = node.rect.w >= 1800;
-        int width = wide ? 1600 : pictureTexels(node.rect.w),
-            height = wide ? 900 : pictureTexels(node.rect.h);
+        // A wallpaper's blurred sides are small on purpose: the GPU stretches them for nothing.
+        const bool backdrop = node.value.compare(0, 10, "wallpaper:") == 0 &&
+                              node.value.find("-blur") != std::string::npos;
+        int width = backdrop ? 480 : wide ? 1600 : pictureTexels(node.rect.w),
+            height = backdrop ? 270 : wide ? 900 : pictureTexels(node.rect.h);
         ImageView view = pictures_->view(node.value, width, height,
                                          node.contain ? ImageFit::Contain : ImageFit::Cover, now);
         node.value.clear();

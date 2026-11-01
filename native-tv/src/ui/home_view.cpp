@@ -55,6 +55,18 @@ std::string initialOf(const ViewState &state) {
     return name.substr(0, end);
 }
 
+// Fork: one wallpaper layer as its look says. A centred picture keeps its own aspect ratio and is
+// never stretched; under "blur" its own blurred, darkened copy fills the screen behind it.
+void wallLayer(Scene &scene, const std::string &asset, const WallpaperLook &look, float alpha) {
+    const Rect stage = {0, 0, kit::canvas::width, kit::canvas::height};
+    if (look.mode == "fit" || look.mode == "blur") {
+        if (look.mode == "blur")
+            scene.image(stage, wallpaperBackdrop(asset), 0, false, {1, 1, 1, alpha});
+        scene.image(wallpaperFitRect(look), asset, 0, false, {1, 1, 1, alpha});
+        return;
+    }
+    scene.image(stage, asset, 0, false, {1, 1, 1, alpha});
+}
 void wallpaper(Scene &scene, const HomeState &home, const Transform &drift) {
     const Rect stage = {0, 0, kit::canvas::width, kit::canvas::height};
     // The drift scales the picture past the screen; the clip keeps it there.
@@ -75,18 +87,19 @@ void wallpaper(Scene &scene, const HomeState &home, const Transform &drift) {
     } popper{scene, drifting};
     if (home.wallpaperTransition) {
         if (!home.wallpaperFrom.empty())
-            scene.image(stage, home.wallpaperFrom, 0, false,
-                        {1, 1, 1, home.wallpaperFromOpacity * (1 - home.wallpaperProgress)});
+            wallLayer(scene, home.wallpaperFrom, home.wallpaperFromLook,
+                      home.wallpaperFromOpacity * (1 - home.wallpaperProgress));
         if (!home.wallpaperTarget.empty())
-            scene.image(stage, home.wallpaperTarget, 0, false,
-                        {1, 1, 1, home.wallpaperTargetOpacity * home.wallpaperProgress});
+            wallLayer(scene, home.wallpaperTarget, home.wallpaperTargetLook,
+                      home.wallpaperTargetOpacity * home.wallpaperProgress);
     } else if (!home.wallpaperShown.empty()) {
-        scene.image(stage, home.wallpaperShown, 0, false, {1, 1, 1, home.wallpaperShownOpacity});
-        if (!home.wallpaperTarget.empty() && home.wallpaperTarget != home.wallpaperShown)
-            scene.image(stage, home.wallpaperTarget, 0, false, {1, 1, 1, 0});
+        wallLayer(scene, home.wallpaperShown, home.wallpaperShownLook, home.wallpaperShownOpacity);
+        if (!home.wallpaperTarget.empty() && (home.wallpaperTarget != home.wallpaperShown ||
+                                              home.wallpaperTargetLook != home.wallpaperShownLook))
+            wallLayer(scene, home.wallpaperTarget, home.wallpaperTargetLook, 0);
     } else if (!home.wallpaperTarget.empty()) {
         // A zero-alpha node keeps the picture requested without showing an empty frame.
-        scene.image(stage, home.wallpaperTarget, 0, false, {1, 1, 1, 0});
+        wallLayer(scene, home.wallpaperTarget, home.wallpaperTargetLook, 0);
     }
 }
 

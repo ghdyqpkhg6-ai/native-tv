@@ -43,6 +43,22 @@ struct HeroArt {
     HeroText text;        // the lines on screen; changes after the old ones have left
     Color wallTint = {0.07f, 0.19f, 0.24f, 1}; // what pages without art wash in
 };
+// Fork: how a gallery wallpaper is drawn. Empty mode is a time-of-day picture, drawn as before.
+// "fill" covers the screen with the prepared crop; "fit" centres the whole picture on the ink;
+// "blur" centres it over its own blurred, darkened copy. fitW and fitH are the centred picture's
+// size at 1920x1080.
+struct WallpaperLook {
+    std::string mode;
+    float fitW = 0, fitH = 0;
+    bool operator==(const WallpaperLook &other) const {
+        return mode == other.mode && fitW == other.fitW && fitH == other.fitH;
+    }
+    bool operator!=(const WallpaperLook &other) const {
+        return !(*this == other);
+    }
+};
+std::string wallpaperBackdrop(const std::string &asset);
+Rect wallpaperFitRect(const WallpaperLook &look);
 struct HomeState {
     size_t tab = 0, row = 0, column = 0, nav = 0;
     bool navigation = false;
@@ -63,6 +79,7 @@ struct HomeState {
     std::string wallpaperShown, wallpaperTarget, wallpaperFrom;
     float wallpaperShownOpacity = 0, wallpaperTargetOpacity = 0, wallpaperFromOpacity = 0,
           wallpaperProgress = 1;
+    WallpaperLook wallpaperShownLook, wallpaperTargetLook, wallpaperFromLook;
     uint32_t wallpaperTransitionAt = 0;
     bool wallpaperTransition = false, wallpaperFailed = false;
     unsigned sourceGeneration = 0, pictureGeneration = 0;

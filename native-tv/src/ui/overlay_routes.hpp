@@ -10,6 +10,8 @@ std::unique_ptr<ScreenView> makeQuickScreen(const std::string &route);
 std::unique_ptr<ScreenView> makeProfilesScreen(const std::string &route);
 std::unique_ptr<ScreenView> makeDetailsScreen(const std::string &route);
 std::unique_ptr<ScreenView> makeEditorScreen(const std::string &route);
+// Fork: the Wallpaper Gallery (wallpaper_screen.cpp), opened from Quick settings.
+std::unique_ptr<ScreenView> makeWallpaperScreen(const std::string &route);
 
 // Where closing a screen goes: back to Home as it was when Home (or one of these screens, which
 // were reached from Home) opened it, otherwise to the page it came from.
