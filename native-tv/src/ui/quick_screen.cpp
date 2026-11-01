@@ -20,6 +20,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
+#include <iterator>
 
 namespace nativetv {
 namespace {
@@ -37,9 +38,11 @@ constexpr kit::SpringTuning kSlide = {420, 1};
 constexpr const char *kStats = "quick:stats", *kNow = "quick:now";
 constexpr const char *kStatsMemory = "quick.stats", *kNowMemory = "quick.now";
 
-enum class Level { Main, Picture, Sound, Input, Sleep, Layout };
+enum class Level { Main, Picture, Sound, Input, Sleep, Layout, Rows };
 const char *levelName(Level level) {
     switch (level) {
+    case Level::Rows:
+        return "rows";
     case Level::Picture:
         return "picture";
     case Level::Sound:
@@ -85,7 +88,27 @@ struct LayoutChoice {
 const LayoutChoice kChoices[] = {
     {"motion", "speed", "subtle", {"off", "subtle", "full"}},
     {"wallpaperMode", "display", "auto", {"auto", "fit", "fill", "blur"}},
-    {"wallpaperRotate", "timer", "off", {"off", "5", "15", "30", "60"}}};
+    {"wallpaperRotate", "timer", "off", {"off", "5", "15", "30", "60", "daylight"}}};
+// Fork: Home's rows as Home settings > Home rows lists them; v0.118.0's order is the default.
+const char *const kFeedRows[] = {"apps", "trending", "movies", "series", "netflix", "youtube", "subs"};
+std::string feedRowTitle(const std::string &key) {
+    if (key == "apps")
+        return msg("tv.quick.rowApps", "Your apps");
+    if (key == "trending")
+        return msg("tv.quick.rowTop", "Top picks for you");
+    if (key == "movies")
+        return msg("tv.quick.rowFilms", "Trending films");
+    if (key == "series")
+        return msg("tv.quick.rowSeries", "Trending series");
+    if (key == "netflix")
+        return msg("tv.quick.rowNetflix", "Available on Netflix");
+    if (key == "youtube")
+        return msg("tv.quick.rowYoutube", "Trending on YouTube");
+    return msg("tv.quick.rowSubs", "Latest from your subscriptions");
+}
+std::string feedRowIcon(const std::string &key) {
+    return key == "apps" ? "apps" : key == "youtube" || key == "subs" ? "play" : "movie";
+}
 const LayoutChoice *layoutChoice(const std::string &key) {
     for (const LayoutChoice &choice : kChoices)
         if (key == choice.key)
@@ -103,8 +126,9 @@ std::string choiceLabel(const std::string &key, const std::string &value) {
                : value == "blur" ? msg("tv.quick.wallBlur", "Blur background")
                                  : msg("tv.quick.wallAuto", "Automatic");
     if (key == "wallpaperRotate")
-        return value == "off" ? msg("tv.quick.off", "Off")
-                              : msg("tv.quick.minutes", "{n} min", fields({{"n", Json::text(value)}}));
+        return value == "off"        ? msg("tv.quick.off", "Off")
+               : value == "daylight" ? msg("tv.quick.daylight", "With the time of day")
+                                     : msg("tv.quick.minutes", "{n} min", fields({{"n", Json::text(value)}}));
     return value;
 }
 
@@ -247,7 +271,14 @@ class QuickScreen final : public ScreenView {
     bool back(ScreenHost &host) override {
         if (closing_)
             return true;
-        if (level_ != Level::Main)
+        if (level_ == Level::Rows) {
+            // Back to Home settings, on the row that opened the list.
+            openLevel(host, Level::Layout);
+            for (size_t i = 0; i < rows_.size(); ++i)
+                if (rows_[i].id == "feedRows")
+                    focus_ = i;
+            focusMoved(host, true);
+        } else if (level_ != Level::Main)
             toMain(host);
         else
             close(host, returnRoute(host.cameFrom()));
@@ -430,6 +461,36 @@ class QuickScreen final : public ScreenView {
     static bool hasGallery(const ScreenHost &host) {
         return host.view().catalogue["wallpapers"]["gallery"].size() > 0;
     }
+    // Fork: Home's row order ("feedOrder", every row, in order) or the rows switched off
+    // ("feedHidden"), as shown: a change still being saved already counts.
+    std::vector<std::string> feedList(ScreenHost &host, const char *key, bool order) {
+        const Json server = host.view().catalogue["layout"][key];
+        Json fallback = Json::array();
+        if (order)
+            for (const char *row : kFeedRows)
+                fallback.add(Json::text(row));
+        const Json shown = host.optimistic().shown(std::string("layout.") + key, server.isArray() ? server : fallback);
+        std::vector<std::string> result;
+        for (const Json &item : shown.items()) {
+            const std::string value = item.string();
+            const bool known = std::find(std::begin(kFeedRows), std::end(kFeedRows), value) != std::end(kFeedRows);
+            if (known && std::find(result.begin(), result.end(), value) == result.end())
+                result.push_back(value);
+        }
+        if (order)
+            for (const char *row : kFeedRows)
+                if (std::find(result.begin(), result.end(), row) == result.end())
+                    result.push_back(row);
+        return result;
+    }
+    void setFeedList(ScreenHost &host, const char *key, const std::vector<std::string> &values) {
+        Json list = Json::array();
+        for (const std::string &value : values)
+            list.add(Json::text(value));
+        const Json server = host.view().catalogue["layout"][key];
+        host.optimistic().set(std::string("layout.") + key, list, server.isArray() ? server : Json::array(),
+                              layoutWrite(key));
+    }
     // For the snapshot and for the held-key checks: what is shown now, and whether it ever went
     // against the key that is held.
     void syncShown(ScreenHost &host) {
@@ -475,6 +536,8 @@ class QuickScreen final : public ScreenView {
             return msg("tv.quick.sleep", "Sleep timer");
         case Level::Layout:
             return msg("tv.quick.settings", "Home settings");
+        case Level::Rows:
+            return msg("tv.quick.rows", "Home rows");
         default:
             return msg("tv.quick.title", "Quick settings");
         }
@@ -507,6 +570,12 @@ class QuickScreen final : public ScreenView {
         if (level_ == Level::Layout)
             if (const LayoutChoice *choice = layoutChoice(row.id))
                 return choiceLabel(row.id, layoutText(host, *choice));
+        if (level_ == Level::Rows) {
+            const std::vector<std::string> hidden = feedList(host, "feedHidden", false);
+            return std::find(hidden.begin(), hidden.end(), row.id) != hidden.end()
+                       ? msg("tv.quick.rowHidden", "Hidden")
+                       : msg("tv.quick.rowShown", "Shown");
+        }
         if (readFailed_ && readsStats(row.id))
             return "—";
         if (row.id == "picture") {
@@ -587,6 +656,9 @@ class QuickScreen final : public ScreenView {
                 add(Row::Kind::Choice, card.id, "hdmi", inputTitle(card), card.id, false,
                     card.data["unused"].boolean(), inputOn(card),
                     card.data["unused"].boolean() ? msg("tv.quick.nothingConnected", "Nothing connected") : "");
+        } else if (level_ == Level::Rows) {
+            for (const std::string &key : feedList(host, "feedOrder", true))
+                add(Row::Kind::Plain, key, feedRowIcon(key), feedRowTitle(key));
         } else if (level_ == Level::Sleep) {
             for (const char *value : kSleep)
                 add(Row::Kind::Choice, value, "timer", sleepLabel(value), value);
@@ -605,6 +677,7 @@ class QuickScreen final : public ScreenView {
                 add(Row::Kind::Plain, "wallpaperMode", "display", msg("tv.quick.wallMode", "Wallpaper fit"));
                 add(Row::Kind::Plain, "wallpaperRotate", "timer", msg("tv.quick.wallRotate", "Change wallpaper"));
             }
+            add(Row::Kind::Plain, "feedRows", "apps", msg("tv.quick.rows", "Home rows"), "", true);
             for (const LayoutSwitch &entry : kSwitches)
                 for (const auto &title : titles)
                     if (title.first == entry.key)
@@ -649,6 +722,8 @@ class QuickScreen final : public ScreenView {
             return msg("tv.quick.stepHint", "Left and Right change it. Back returns.");
         if (level_ == Level::Layout && row.id == "wallpapers")
             return msg("tv.quick.galleryHint", "OK opens the gallery. Back returns.");
+        if (level_ == Level::Rows)
+            return msg("tv.quick.rowsHint", "OK shows or hides it. Left and Right move it. Back returns.");
         if (level_ == Level::Layout)
             return msg("tv.quick.switchHint", "OK switches. Left or Back returns.");
         if (level_ != Level::Main)
@@ -806,6 +881,23 @@ class QuickScreen final : public ScreenView {
         if (focus_ >= rows_.size())
             return;
         const Row &row = rows_[focus_];
+        if (level_ == Level::Rows) {
+            // Left moves the row up, Right down; the focus goes with it.
+            const std::string id = row.id;
+            std::vector<std::string> order = feedList(host, "feedOrder", true);
+            const size_t at = static_cast<size_t>(std::find(order.begin(), order.end(), id) - order.begin());
+            if (at >= order.size() || (direction < 0 && at == 0) || (direction > 0 && at + 1 >= order.size()))
+                return;
+            const size_t to = direction < 0 ? at - 1 : at + 1;
+            std::swap(order[at], order[to]);
+            setFeedList(host, "feedOrder", order);
+            rebuild(host, false);
+            for (size_t i = 0; i < rows_.size(); ++i)
+                if (rows_[i].id == id)
+                    focus_ = i;
+            focusMoved(host, false);
+            return;
+        }
         if (level_ != Level::Main) {
             if (level_ == Level::Layout)
                 if (const LayoutChoice *choice = layoutChoice(row.id)) {
@@ -931,6 +1023,21 @@ class QuickScreen final : public ScreenView {
             close(host, "profiles");
     }
     void choose(ScreenHost &host, const Row &row) {
+        if (level_ == Level::Rows) {
+            std::vector<std::string> hidden = feedList(host, "feedHidden", false);
+            const auto found = std::find(hidden.begin(), hidden.end(), row.id);
+            if (found != hidden.end())
+                hidden.erase(found);
+            else
+                hidden.push_back(row.id);
+            setFeedList(host, "feedHidden", hidden);
+            host.invalidate();
+            return;
+        }
+        if (level_ == Level::Layout && row.id == "feedRows") {
+            openLevel(host, Level::Rows);
+            return;
+        }
         if (level_ == Level::Layout) {
             if (const LayoutChoice *choice = layoutChoice(row.id)) {
                 stepChoice(host, *choice, 1);

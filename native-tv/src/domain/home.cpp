@@ -246,31 +246,41 @@ std::vector<CardRow> homeRows(const std::string &tab, const Json &catalogue, con
                                                       {"movies", "Trending films this week"},
                                                       {"series", "Trending series this week"},
                                                       {"netflix", "Available on Netflix"},
-                                                      {"youtube", "Trending on YouTube"}};
+                                                      {"youtube", "Trending on YouTube"},
+                                                      {"subs", "Latest from your subscriptions"}};
     std::map<std::string, Json> feedRows;
     for (const auto &source : discover["rows"].items())
         feedRows[source["key"].string()] = source;
-    // The apps lead, as on Google TV, in their kinds' order when sorted by kind; the top picks
-    // follow and the hero is drawn from them.
+    // Fork: every row is built, then shown in the layout's order less the ones switched off
+    // ("feedOrder", "feedHidden"). The default order is v0.118.0's: the apps lead, as on Google TV,
+    // and the top picks follow; the hero is drawn from the top picks wherever they are.
+    std::map<std::string, CardRow> built;
     CardRow apps = appsRow(catalogue, guide, false);
     if (!apps.cards.empty())
-        result.push_back(apps);
-    for (const auto &key : {"trending", "movies", "series", "netflix", "youtube"}) {
+        built["apps"] = apps;
+    for (const auto &key : {"trending", "movies", "series", "netflix", "youtube", "subs"}) {
         if (!feedRows.count(key))
             continue;
         Json source = feedRows[key];
         CardRow row;
         row.key = source["key"].string();
-        row.posters = row.key != "trending" && row.key != "youtube";
+        const bool videos = row.key == "youtube" || row.key == "subs";
+        row.posters = row.key != "trending" && !videos;
         auto name = names.find(row.key);
         row.title = name == names.end() ? source["title"].string(row.key) : name->second;
         for (const auto &item : source["items"].items()) {
             Card card;
             card.id = item["id"].string();
-            card.kind = row.key == "youtube" ? "youtube" : row.key == "netflix" ? "netflix" : "title";
+            card.kind = videos ? "youtube" : row.key == "netflix" ? "netflix" : "title";
             card.data = item;
             card.title = item["title"].string();
             card.subtitle = titleFacts(item);
+            if (videos) {
+                // "Channel  ·  12:34": the channel always, the length where YouTube gave one.
+                card.subtitle = item["channel"].string(item["overview"].string());
+                if (!item["duration"].string().empty())
+                    card.subtitle += (card.subtitle.empty() ? "" : "  ·  ") + item["duration"].string();
+            }
             // Every card is landscape, so the backdrop is preferred over the portrait poster.
             card.image = artwork(item);
             card.backdrop = artwork(item, true);
@@ -288,7 +298,23 @@ std::vector<CardRow> homeRows(const std::string &tab, const Json &catalogue, con
             row.cards.push_back(card);
         }
         if (!row.cards.empty())
-            result.push_back(row);
+            built[row.key] = row;
+    }
+    std::vector<std::string> order;
+    for (const auto &key : catalogue["layout"]["feedOrder"].items())
+        order.push_back(key.string());
+    for (const char *key : {"apps", "trending", "movies", "series", "netflix", "youtube", "subs"})
+        if (std::find(order.begin(), order.end(), key) == order.end())
+            order.push_back(key);
+    std::vector<std::string> hidden;
+    for (const auto &key : catalogue["layout"]["feedHidden"].items())
+        hidden.push_back(key.string());
+    for (const std::string &key : order) {
+        auto row = built.find(key);
+        if (row == built.end() || std::find(hidden.begin(), hidden.end(), key) != hidden.end())
+            continue;
+        result.push_back(row->second);
+        built.erase(row); // a key listed twice is shown once
     }
     return result;
 }

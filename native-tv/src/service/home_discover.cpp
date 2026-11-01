@@ -187,6 +187,44 @@ Json makeRow(const std::string &key, const std::vector<Json> &items) {
     return row;
 }
 
+// Fork: a video's length from YouTube's ISO 8601 duration ("PT1H2M3S" -> "1:02:03", "PT4M5S" ->
+// "4:05"); empty for a live stream ("P0D") or anything else.
+std::string videoLength(const std::string &iso) {
+    if (iso.compare(0, 2, "PT") != 0)
+        return "";
+    long hours = 0, minutes = 0, seconds = 0, number = 0;
+    bool digits = false;
+    for (size_t i = 2; i < iso.size(); ++i) {
+        const char c = iso[i];
+        if (c >= '0' && c <= '9') {
+            number = number * 10 + (c - '0');
+            if (number > 100000)
+                return "";
+            digits = true;
+            continue;
+        }
+        if (c == 'H')
+            hours = number;
+        else if (c == 'M')
+            minutes = number;
+        else if (c == 'S')
+            seconds = number;
+        else
+            return "";
+        number = 0;
+    }
+    if (!digits)
+        return "";
+    char text[32];
+    if (hours)
+        std::snprintf(text, sizeof(text), "%ld:%02ld:%02ld", hours, minutes, seconds);
+    else
+        std::snprintf(text, sizeof(text), "%ld:%02ld", minutes, seconds);
+    return text;
+}
+// The cache's format: rows made before the video lengths were kept are fetched again once.
+const double kCacheSchema = 2;
+
 Json youtubeRow(const Json &document) {
     std::vector<Json> items;
     for (const Json &video : document["items"].items()) {
@@ -206,6 +244,8 @@ Json youtubeRow(const Json &document) {
         item.set("year", Json::text(""));
         item.set("rating", Json::parse("null"));
         item.set("overview", Json::text(utf16Prefix(jsString(snippet["channelTitle"]), 120)));
+        item.set("channel", Json::text(utf16Prefix(jsString(snippet["channelTitle"]), 120)));
+        item.set("duration", Json::text(videoLength(jsString(video["contentDetails"]["duration"]))));
         item.set("poster", Json::text(""));
         item.set("backdrop", Json::text(""));
         item.set("image", Json::text("https://i.ytimg.com/vi/" + id + "/mqdefault.jpg"));
@@ -376,7 +416,7 @@ void HomeDiscover::refresh(const std::string &tmdbKey,
     }
 
     if (!youtubeKey.empty()) {
-        const std::string url = "https://www.googleapis.com/youtube/v3/videos?part=snippet&chart=mostPopular&maxResults=16&key=" +
+        const std::string url = "https://www.googleapis.com/youtube/v3/videos?part=snippet,contentDetails&chart=mostPopular&maxResults=16&key=" +
                                 urlEncode(youtubeKey);
         Json document;
         std::string error;
@@ -418,6 +458,7 @@ void HomeDiscover::refresh(const std::string &tmdbKey,
     updated.set("partial", Json::flag(missed > 0));
     updated.set("tmdbAsked", Json::flag(!tmdbKey.empty()));
     updated.set("youtubeAsked", Json::flag(!youtubeKey.empty()));
+    updated.set("schema", Json::numeric(kCacheSchema));
     {
         std::lock_guard<std::mutex> lock(mutex_);
         cache_ = updated;
@@ -526,6 +567,7 @@ void HomeDiscover::saveCacheLocked() {
 
 bool HomeDiscover::dueLocked(int64_t nowMs, bool tmdbAsked, bool youtubeAsked) const {
     if (!cache_.isObject()) return true;
+    if (youtubeAsked && cache_["schema"].number() < kCacheSchema) return true;
     // A key saved after the cache was made has no rows in it, so it must not wait for tomorrow. A cache
     // from before the keys were recorded is read from its rows.
     bool youtubeRows = false, titleRows = false;

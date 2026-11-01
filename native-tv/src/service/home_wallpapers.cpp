@@ -134,6 +134,9 @@ Json galleryStatus(const std::string &dataRoot, std::string &revision) {
         entry.set("orientation", Json::text(kind));
         entry.set("fitW", Json::numeric(fitW));
         entry.set("fitH", Json::numeric(fitH));
+        // When the picture suits: "day", "evening" or "night" (measured by prepare-wallpapers.py).
+        const std::string tone = item["tone"].string();
+        entry.set("tone", Json::text(tone == "day" || tone == "evening" || tone == "night" ? tone : ""));
         items.add(entry);
     }
     return items;

@@ -113,6 +113,20 @@ def crop_box(width, height, aspect, fx, fy):
     return (round(left), round(top), round(left + w), round(top + h))
 
 
+def tone(image):
+    """When the picture suits the screen: 'night' for dark ones (space, night skies), 'evening' for
+    dim or warm ones (sunsets), 'day' for the rest. Measured on the picture Fill shows."""
+    small = np.asarray(image.resize((64, 36)), dtype=np.float32)
+    r, g, b = small[..., 0].mean(), small[..., 1].mean(), small[..., 2].mean()
+    light = 0.2126 * r + 0.7152 * g + 0.0722 * b
+    warmth = r - b
+    if light < 60:
+        return 'night', light, warmth
+    if light < 105 or (warmth > 20 and light < 150):
+        return 'evening', light, warmth
+    return 'day', light, warmth
+
+
 def fitted(width, height, box):
     scale = min(box[0] / width, box[1] / height)
     return max(1, round(width * scale)), max(1, round(height * scale))
@@ -167,11 +181,13 @@ def build(source, out):
             thumb.paste(inner, ((THUMB[0] - inner.width) // 2, (THUMB[1] - inner.height) // 2))
         save(thumb, out / (identifier + '-thumb.jpg'), 86)
 
+        when, light, warmth = tone(fill)
         items.append({'id': identifier, 'file': path.name, 'name': path.stem[:60],
                       'width': width, 'height': height, 'orientation': kind,
-                      'fitW': fit_size[0], 'fitH': fit_size[1],
+                      'fitW': fit_size[0], 'fitH': fit_size[1], 'tone': when,
                       'focus': [round(fx, 3), round(fy, 3)], 'faces': face_count})
-        print('%s  %-9s %5dx%-5d faces=%d  %s' % (identifier, kind, width, height, face_count, path.name))
+        print('%s  %-9s %-7s light=%3d warm=%+4d  %5dx%-5d faces=%d  %s' % (
+            identifier, kind, when, light, warmth, width, height, face_count, path.name))
 
     keep = {item['id'] for item in items}
     for stale in out.glob('g*.jpg'):

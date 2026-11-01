@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cstdint>
+#include <iterator>
 #include <string>
 #include <vector>
 
@@ -15,12 +16,21 @@ const char *kColors[] = {"#a8c7fa", "#f2b8b5", "#6dd58c", "#ffb74d",
 const char *kLayoutKeys[] = {"rows", "order", "sort", "hidden", "kinds", "channels",
                              "picture", "appNames", "clockFormat", "showInputs",
                              "showLgHome", "showLive", "colours", "motion",
-                             "wallpaper", "wallpaperMode", "wallpaperRotate"};
+                             "wallpaper", "wallpaperMode", "wallpaperRotate",
+                             "feedOrder", "feedHidden"};
+// Fork: the rows of Home's own tab, in the order they are shown, and the ones switched off. The
+// default is v0.118.0's order; a row with nothing in it (no YouTube key, no account) is skipped.
+const char *const kFeedRows[] = {"apps", "trending", "movies", "series", "netflix", "youtube",
+                                 "subs"};
+std::vector<std::string> feedKeys() {
+    return std::vector<std::string>(std::begin(kFeedRows), std::end(kFeedRows));
+}
 // Fork: Home's animation level, and the wallpaper chosen from the gallery with how it is shown
 // and how often it changes. "auto" fills a landscape picture and blurs the sides of a portrait.
 const char *const kMotionLevels[] = {"off", "subtle", "full"};
 const char *const kWallpaperModes[] = {"auto", "fit", "fill", "blur"};
-const char *const kRotateMinutes[] = {"off", "5", "15", "30", "60"};
+// "daylight": the gallery's bright pictures by day, warm or dim ones in the evening, dark ones at night.
+const char *const kRotateMinutes[] = {"off", "5", "15", "30", "60", "daylight"};
 template <size_t N>
 std::string oneOf(const Json &value, const char *const (&allowed)[N], const std::string &fallback) {
     const std::string text = value.string();
@@ -198,6 +208,8 @@ Json defaultDocument() {
     document.set("wallpaper", Json::text(""));
     document.set("wallpaperMode", Json::text("auto"));
     document.set("wallpaperRotate", Json::text("off"));
+    document.set("feedOrder", strings(feedKeys()));
+    document.set("feedHidden", Json::array());
     document.set("profiles", Json::array());
     document.set("profile", Json::text(kMainProfile));
     document.set("hideLgHomeAtStart", Json::parse("null"));
@@ -381,6 +393,11 @@ Json normalizeHomeDocument(const Json &raw) {
     result.set("wallpaper", Json::text(wallpaperChoice(raw["wallpaper"], "")));
     result.set("wallpaperMode", Json::text(oneOf(raw["wallpaperMode"], kWallpaperModes, "auto")));
     result.set("wallpaperRotate", Json::text(oneOf(raw["wallpaperRotate"], kRotateMinutes, "off")));
+    result.set("feedOrder", strings(ordered(stringList(raw["feedOrder"], 20), feedKeys())));
+    std::vector<std::string> feedHidden;
+    for (const std::string &key : stringList(raw["feedHidden"], 20))
+        if (contains(feedKeys(), key) && !contains(feedHidden, key)) feedHidden.push_back(key);
+    result.set("feedHidden", strings(feedHidden));
 
     Json profiles = Json::array();
     if (raw["profiles"].isArray()) {
@@ -504,12 +521,16 @@ HomeDocumentUpdate updateHomeLayout(const Json &input, const Json &body) {
                                                    current["wallpaperMode"].string())));
     proposed.set("wallpaperRotate", Json::text(oneOf(body["wallpaperRotate"], kRotateMinutes,
                                                      current["wallpaperRotate"].string())));
+    proposed.set("feedOrder", body["feedOrder"].isArray() ? body["feedOrder"] : current["feedOrder"]);
+    proposed.set("feedHidden", body["feedHidden"].isArray() ? body["feedHidden"] : current["feedHidden"]);
     Json next = normalizeHomeDocument(proposed);
     if (body["reset"].boolean()) {
         const Json defaults = defaultDocument();
         const char *resetKeys[] = {"rows", "order", "sort", "hidden", "showInputs",
                                    "showLgHome", "showLive"};
         for (const char *key : resetKeys) next.set(key, defaults[key]);
+        next.set("feedOrder", defaults["feedOrder"]);
+        next.set("feedHidden", defaults["feedHidden"]);
         next.set("kinds", strings(kindOrder(Json())));
     }
     update.document = next;

@@ -259,7 +259,8 @@ class WallpaperScreen final : public ScreenView {
                                                  : msg("tv.wall.auto", "Automatic fit");
         const std::string rotate = layout["wallpaperRotate"].string();
         const std::string change =
-            std::atoi(rotate.c_str()) > 0
+            rotate == "daylight" ? msg("tv.wall.daylight", "Follows the time of day")
+            : std::atoi(rotate.c_str()) > 0
                 ? msg("tv.wall.rotates", "Changes every {n} min from the chosen one",
                       fields({{"n", Json::text(rotate)}}))
                 : msg("tv.wall.stays", "Stays until you choose another");

@@ -64,8 +64,24 @@ bool galleryWallpaperAt(const Json &catalogue, int month, int day, int hour, int
             index = i;
     const std::string rotate = layout["wallpaperRotate"].string();
     const int minutes = std::atoi(rotate.c_str());
-    if (minutes > 0) {
-        const long clock = ((static_cast<long>(month) * 31 + day) * 24 + hour) * 60 + minute;
+    const long clock = ((static_cast<long>(month) * 31 + day) * 24 + hour) * 60 + minute;
+    if (rotate == "daylight") {
+        // Dynamic: a picture whose tone suits the hour, the next of them every half hour. Without
+        // any of that tone, the nearest one (evening stands in for night and the other way round).
+        const char *const day[] = {"day", "evening", "night"};
+        const char *const evening[] = {"evening", "night", "day"};
+        const char *const night[] = {"night", "evening", "day"};
+        const char *const *tones = hour >= 6 && hour < 17 ? day : hour >= 17 && hour < 21 ? evening : night;
+        std::vector<size_t> group;
+        for (int t = 0; t < 3 && group.empty(); ++t)
+            for (size_t i = 0; i < items.size(); ++i)
+                if (items[i]["tone"].string() == tones[t])
+                    group.push_back(i);
+        if (group.empty())
+            for (size_t i = 0; i < items.size(); ++i)
+                group.push_back(i);
+        index = group[static_cast<size_t>(clock / 30) % group.size()];
+    } else if (minutes > 0) {
         index = (index + static_cast<size_t>(clock / minutes)) % items.size();
     }
     const Json item = items[index];
