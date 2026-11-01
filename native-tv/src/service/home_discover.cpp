@@ -215,7 +215,7 @@ std::string videoLength(const std::string &iso) {
     }
     if (!digits)
         return "";
-    char text[32];
+    char text[64]; // three longs and their separators, whatever their size
     if (hours)
         std::snprintf(text, sizeof(text), "%ld:%02ld:%02ld", hours, minutes, seconds);
     else
