@@ -112,7 +112,7 @@ function showTab(name) {
     b.tabIndex = isSel ? 0 : -1;
   });
   document.querySelectorAll('#appspane [data-pane]').forEach(el => { el.hidden = APPS_PANE[name] !== el.dataset.pane; });
-  placeTabIndicators();
+  placeTabIndicators(true);
 
   const button = sectionButton(section);
   const label = button && button.querySelector('.nav-label');
@@ -142,14 +142,20 @@ function showTab(name) {
   else if (typeof scheduleToolsPoll === 'function') { scheduleToolsPoll(); }
 }
 
-// The indicator under the selected tab, for each bar showing.
-function placeTabIndicators() {
+// The indicator under the selected tab, for each bar showing. `reveal` (a tab was chosen) also
+// scrolls the bar sideways to the tab. Only the bar moves: scrollIntoView would scroll the page
+// up to the bar too, and this also runs on every resize (a phone's address bar sliding away as
+// the page scrolls) and whenever a poll shows or hides a tab.
+function placeTabIndicators(reveal) {
   document.querySelectorAll('.tabs').forEach(bar => {
     const current = bar.querySelector('.tab[aria-selected="true"]');
     const indicator = bar.querySelector('.tab-ind');
     if (!current || !indicator || !current.offsetWidth) return;
     indicator.style.transform = 'translateX(' + current.offsetLeft + 'px) scaleX(' + current.offsetWidth / 100 + ')';
-    current.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    if (reveal !== true) return;
+    const left = current.offsetLeft, right = left + current.offsetWidth;
+    if (left < bar.scrollLeft) bar.scrollLeft = left;
+    else if (right > bar.scrollLeft + bar.clientWidth) bar.scrollLeft = right - bar.clientWidth;
   });
 }
 
@@ -223,10 +229,10 @@ document.addEventListener('keydown', e => {
   handle.addEventListener('pointercancel', release);
 })();
 
-document.addEventListener('DOMContentLoaded', () => { reportNav(); placeTabIndicators(); });
+document.addEventListener('DOMContentLoaded', () => { reportNav(); placeTabIndicators(true); });
 // A tab the TV turns out to offer moves the ones after it, and the indicator with them.
 document.querySelectorAll('.tabs').forEach(bar =>
-  new MutationObserver(placeTabIndicators).observe(bar, { attributes: true, attributeFilter: ['hidden'], subtree: true }));
+  new MutationObserver(() => placeTabIndicators()).observe(bar, { attributes: true, attributeFilter: ['hidden'], subtree: true }));
 window.addEventListener('resize', () => { placeTabIndicators(); reportNav(); });
 
 // The bar takes a surface once the page has scrolled under it.
