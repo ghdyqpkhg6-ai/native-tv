@@ -50,6 +50,7 @@ enum class Operation {
     // Fork: the YouTube account for the subscriptions row (youtube_account.hpp).
     YouTubeAccount, // GET /api/youtube/account
     YouTubeLink,    // POST /api/youtube/account/link
-    YouTubeUnlink   // POST /api/youtube/account/unlink
+    YouTubeUnlink,  // POST /api/youtube/account/unlink
+    YouTubeUse      // POST /api/youtube/account/use: the profile's account, by id or the next one
 };
 }

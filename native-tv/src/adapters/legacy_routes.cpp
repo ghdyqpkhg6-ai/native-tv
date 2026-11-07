@@ -154,6 +154,8 @@ std::string legacyRoute(Operation operation, const Json &arguments) {
         return "/api/youtube/account/link";
     case Operation::YouTubeUnlink:
         return "/api/youtube/account/unlink";
+    case Operation::YouTubeUse:
+        return "/api/youtube/account/use";
     case Operation::None:
         break;
     }

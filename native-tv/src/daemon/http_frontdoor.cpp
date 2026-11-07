@@ -1808,7 +1808,7 @@ HttpFrontDoor::HttpFrontDoor(ServerConfig config, std::string version, std::stri
     // Fork: the signed-in YouTube account's subscriptions join the feed (youtube_account.hpp).
     homeDiscover_.setSubscriptions([this]() {
         const Json document = currentConfigDocument();
-        return youtubeAccount_.subscriptionsRow(document["youtubeClientId"].string(),
+        return youtubeAccount_.subscriptionsRow(activeHomeProfile(), document["youtubeClientId"].string(),
                                                 document["youtubeClientSecret"].string());
     });
     lgSettingsCacheSettings_ = Json::object();
@@ -2967,6 +2967,16 @@ std::string HttpFrontDoor::localHostname(const std::string &address) const {
 std::string HttpFrontDoor::mainProfileName() const {
     StatsCollector *collector = statsCollector();
     return names::tvDefaultName(collector ? collector->deviceModel() : std::string());
+}
+
+// Fork: Home's active profile, whose YouTube account the subscriptions row shows.
+std::string HttpFrontDoor::activeHomeProfile() const {
+    std::lock_guard<std::mutex> lock(homeConfigMutex_);
+    JsonFile file(dataFilePath(dataRoot_, "home.json"), 8 * 1024 * 1024);
+    const JsonFileResult stored = file.load();
+    if (!stored.found)
+        return "main";
+    return service::normalizeHomeDocument(stored.value)["profile"].string("main");
 }
 
 StatsCollector *HttpFrontDoor::statsCollector() const {
@@ -17909,13 +17919,31 @@ void HttpFrontDoor::dispatch(HttpExchange &exchange) const {
         // The POSTs take JSON from this origin only, as every changing route does (http_csrf.cpp).
         if (request.method == "POST" && rejectCrossSitePost(exchange))
             return;
+        // Every route acts for Home's active profile: each profile has its own account.
+        const std::string profile = activeHomeProfile();
+        Json body = Json::object();
+        if (request.method == "POST" && exchange.setBodyLimit(4096)) {
+            std::string text;
+            char buffer[1024];
+            for (;;) {
+                const int count = exchange.readBody(buffer, sizeof(buffer));
+                if (count <= 0)
+                    break;
+                text.append(buffer, static_cast<size_t>(count));
+            }
+            const Json parsed = Json::parse(text);
+            if (parsed.isObject())
+                body = parsed;
+        }
         Json result;
         if (request.uri == "/api/youtube/account" && request.method == "GET")
-            result = youtubeAccount_.status(clientId, clientSecret);
+            result = youtubeAccount_.status(profile, clientId, clientSecret);
         else if (request.uri == "/api/youtube/account/link" && request.method == "POST")
-            result = youtubeAccount_.link(clientId, clientSecret);
+            result = youtubeAccount_.link(profile, clientId, clientSecret);
         else if (request.uri == "/api/youtube/account/unlink" && request.method == "POST")
-            result = youtubeAccount_.unlink();
+            result = youtubeAccount_.unlink(profile, body["id"].string());
+        else if (request.uri == "/api/youtube/account/use" && request.method == "POST")
+            result = youtubeAccount_.use(profile, body["id"].string());
         if (result.valid()) {
             (void)exchange.respond(200,
                                    {{"Content-Type", "application/json; charset=utf-8"},

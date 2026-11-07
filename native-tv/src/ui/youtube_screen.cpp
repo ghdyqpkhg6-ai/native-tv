@@ -5,6 +5,9 @@
 // server (youtube_account.cpp) finishes by itself. The page only shows the state the server reports,
 // asking again every two seconds while a code is waiting and every ten otherwise. Signed in, Home
 // gains "Latest from your subscriptions"; signing out revokes the access with Google.
+//
+// Each Home profile has its own account. Several can be signed in: the page lists them, switches
+// the active profile to the next one, adds another, or signs the profile's one out.
 #include "domain/say.hpp"
 #include "ui/application.hpp"
 #include "ui/kit/entry.hpp"
@@ -13,6 +16,8 @@
 #include "ui/overlay_routes.hpp"
 #include <algorithm>
 #include <cmath>
+#include <string>
+#include <vector>
 
 namespace nativetv {
 namespace {
@@ -55,8 +60,22 @@ class YouTubeScreen final : public ScreenView {
         if (key == Key::Up)
             return false;
         if (key == Key::Ok) {
-            act(host);
+            const std::vector<std::string> shown = buttons();
+            if (!shown.empty())
+                act(host, shown[std::min(selected_, shown.size() - 1)]);
             return true;
+        }
+        if (key == Key::Left || key == Key::Right) {
+            const size_t count = buttons().size();
+            if (count) {
+                selected_ = std::min(selected_, count - 1);
+                if (key == Key::Left && selected_ > 0)
+                    --selected_;
+                else if (key == Key::Right && selected_ + 1 < count)
+                    ++selected_;
+                confirmUntil_ = 0;
+                host.invalidate();
+            }
         }
         return key == Key::Down || key == Key::Left || key == Key::Right;
     }
@@ -64,8 +83,12 @@ class YouTubeScreen final : public ScreenView {
         host.motion().tween("yt:f", 1, kit::motion::ms::focus, easing(kit::motion::ease::out));
     }
     void click(ScreenHost &host, const std::string &id) override {
-        if (id == "yt:button")
-            act(host);
+        const std::vector<std::string> shown = buttons();
+        for (size_t i = 0; i < shown.size(); ++i)
+            if (id == "yt:" + shown[i]) {
+                selected_ = i;
+                act(host, shown[i]);
+            }
     }
     void response(ScreenHost &host, const Response &response) override {
         const Json data = response.json();
@@ -103,8 +126,6 @@ class YouTubeScreen final : public ScreenView {
                               Node::Align::Left, lines);
             y += style.line * lines + 12;
         };
-        std::string button;
-        bool primary = false;
         if (!loaded_) {
             line(msg("tv.yt.checking", "Checking…"), kit::type::bodyL, kit::color::onSurface2);
         } else if (!status_["configured"].boolean()) {
@@ -131,38 +152,67 @@ class YouTubeScreen final : public ScreenView {
             tile.sweep = -1;
             kit::qrTile(paint, tile);
         } else if (status_["linked"].boolean()) {
-            line(msg("tv.yt.linked", "Signed in to YouTube."), kit::type::bodyL, kit::color::onSurface);
+            line(msg("tv.yt.linkedAs", "This profile shows {name}'s subscriptions.",
+                     fields({{"name", status_["account"]["name"]}})),
+                 kit::type::bodyL, kit::color::onSurface);
             const int videos = static_cast<int>(status_["videos"].number());
-            line(videos > 0 ? msg("tv.yt.videos", "{n} new videos from your subscriptions are on Home.",
+            line(videos > 0 ? msg("tv.yt.videos", "{n} new videos from its subscriptions are on Home.",
                                   fields({{"n", Json::text(std::to_string(videos))}}))
-                            : msg("tv.yt.fetching", "The newest videos from your subscriptions are on their way to Home."),
+                            : msg("tv.yt.fetching", "The newest videos from its subscriptions are on their way to Home."),
                  kit::type::body, kit::color::onSurface2);
+            const std::vector<Json> accounts = status_["accounts"].items();
+            if (accounts.size() > 1) {
+                std::string names;
+                for (const Json &account : accounts)
+                    names += (names.empty() ? "" : "   ·   ") +
+                             std::string(account["active"].boolean() ? "● " : "") + account["name"].string();
+                line(msg("tv.yt.accounts", "Signed in: {names}", fields({{"names", Json::text(names)}})),
+                     kit::type::body, kit::color::onSurface2, 2);
+            }
             line(msg("tv.yt.scope",
-                     "Native Tv reads only your subscriptions. YouTube does not let any app see your history, "
+                     "Native Tv reads only subscriptions. YouTube does not let any app see your history, "
                      "recommendations or where you stopped watching."),
                  kit::type::body, kit::color::onSurface3, 2);
-            button = confirmUntil_ > 0 ? msg("tv.yt.confirm", "Press OK again to sign out")
-                                       : msg("tv.yt.signOut", "Sign out");
         } else {
             line(msg("tv.yt.intro", "Sign in to show the newest videos from your subscriptions on Home."),
                  kit::type::bodyL, kit::color::onSurface);
             line(msg("tv.yt.readOnly",
                      "Read-only: Native Tv reads which channels you subscribe to. Your password never reaches the TV."),
                  kit::type::body, kit::color::onSurface2, 2);
-            button = msg("tv.yt.signIn", "Sign in with Google");
-            primary = true;
         }
         if (!error_.empty())
             line(error_, kit::type::body, kit::color::warn, 2);
-        if (!button.empty()) {
+        const std::vector<std::string> shown = buttons();
+        if (!shown.empty())
+            selected_ = std::min(selected_, shown.size() - 1);
+        float x = kLeft;
+        for (size_t i = 0; i < shown.size(); ++i) {
+            const std::string &action = shown[i];
             kit::PillButton pill;
-            pill.rest = {kLeft, std::max(y + 24, 560.0f), 520, 72};
-            pill.id = "yt:button";
-            pill.label = busy_ ? msg("tv.yt.wait", "One moment…") : button;
-            pill.icon = primary ? "play" : "close";
-            pill.primary = primary;
-            pill.focus = host.barFocused() ? 0 : static_cast<float>(host.motion().value("yt:f"));
+            pill.id = "yt:" + action;
+            if (action == "signin") {
+                pill.label = msg("tv.yt.signIn", "Sign in with Google");
+                pill.icon = "play";
+                pill.primary = true;
+            } else if (action == "switch") {
+                pill.label = msg("tv.yt.switch", "Switch account");
+                pill.icon = "arrowright";
+                pill.primary = true;
+            } else if (action == "add") {
+                pill.label = msg("tv.yt.add", "Add another account");
+                pill.icon = "play";
+            } else {
+                pill.label = confirmUntil_ > 0 ? msg("tv.yt.confirm", "Press OK again to sign out")
+                                               : msg("tv.yt.signOut", "Sign out");
+                pill.icon = "close";
+            }
+            if (busy_ && i == selected_)
+                pill.label = msg("tv.yt.wait", "One moment…");
+            const float width = action == "signout" && confirmUntil_ > 0 ? 560.0f : 440.0f;
+            pill.rest = {x, std::max(y + 24, 560.0f), width, 72};
+            pill.focus = host.barFocused() || i != selected_ ? 0 : static_cast<float>(host.motion().value("yt:f"));
             kit::pillButton(paint, pill);
+            x += width + 32;
         }
         scene.popTransform();
         scene.popOpacity();
@@ -174,10 +224,20 @@ class YouTubeScreen final : public ScreenView {
         askedAt_ = host.nowMs();
         host.services().read(kStatus, Operation::YouTubeAccount);
     }
-    void act(ScreenHost &host) {
+    // The page's buttons, left to right, for what the server reports.
+    std::vector<std::string> buttons() const {
+        if (!loaded_ || !status_["configured"].boolean() || status_["pending"].isObject())
+            return {};
+        if (!status_["linked"].boolean())
+            return {"signin"};
+        if (status_["accounts"].size() > 1)
+            return {"switch", "add", "signout"};
+        return {"add", "signout"};
+    }
+    void act(ScreenHost &host, const std::string &action) {
         if (busy_ || !loaded_ || !status_["configured"].boolean() || status_["pending"].isObject())
             return;
-        if (status_["linked"].boolean()) {
+        if (action == "signout") {
             if (confirmUntil_ <= 0) {
                 confirmUntil_ = host.nowMs() + kConfirmMs;
                 host.invalidate();
@@ -186,6 +246,10 @@ class YouTubeScreen final : public ScreenView {
             confirmUntil_ = 0;
             busy_ = true;
             host.services().write(kAction, Operation::YouTubeUnlink, Json::object());
+        } else if (action == "switch") {
+            busy_ = true;
+            error_.clear();
+            host.services().write(kAction, Operation::YouTubeUse, Json::object());
         } else {
             busy_ = true;
             error_.clear();
@@ -198,6 +262,7 @@ class YouTubeScreen final : public ScreenView {
     std::string error_;
     bool loaded_ = false, asking_ = false, busy_ = false;
     double askedAt_ = 0, confirmUntil_ = 0;
+    size_t selected_ = 0;
 };
 } // namespace
 

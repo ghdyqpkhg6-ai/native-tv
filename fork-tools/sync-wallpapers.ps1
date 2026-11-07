@@ -6,9 +6,9 @@
 #
 #   powershell -File fork-tools\sync-wallpapers.ps1 [-Source <walls-tv>] [-Tv <ip>] [-Key <ssh key>]
 param(
-    [string]$Source = "C:\Users\Legion\Documents\Native TV\walls-tv",
+    [string]$Source = "C:\Users\Vian\Documents\Native TV\walls-tv",
     [string]$Tv = "192.168.50.183",
-    [string]$Key = "C:\Users\Legion\.ssh\lg_webos"
+    [string]$Key = "C:\Users\Vian\.ssh\NanoCell86_webos"
 )
 $ErrorActionPreference = 'Stop'
 $files = Get-ChildItem -LiteralPath $Source -File | Where-Object { $_.Name -match '^(g\d{1,3}(-fit|-blur|-thumb)?\.jpg|gallery\.json)$' }

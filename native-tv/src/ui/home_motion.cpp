@@ -89,6 +89,13 @@ HeroText linesOf(const ViewState &state, const Card &card) {
             text.source = card.kind == "youtube" ? "YouTube" : "Top picks for you";
         text.facts = card.subtitle.empty() && card.kind == "youtube" ? "YouTube" : card.subtitle;
         text.description = card.data["overview"].string();
+    } else if (card.kind == "ytaccount") {
+        // Fork: the subscriptions row's account picker (domain/home.cpp).
+        text.source = "YouTube account";
+        text.facts = card.subtitle;
+        text.description = "The videos in this row come from this account's subscriptions. Each Home "
+                           "profile keeps its own account.";
+        text.hint = card.data.size() > 1 ? "Switch" : "Add";
     } else if (card.kind == "dev" || card.kind == "ch") {
         text.source = card.kind == "dev" ? "Input" : "Channel";
         text.facts = card.subtitle;

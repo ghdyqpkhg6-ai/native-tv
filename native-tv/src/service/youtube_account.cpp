@@ -2,7 +2,9 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdio>
+#include <cstdlib>
 #include <fcntl.h>
+#include <iterator>
 #include <limits>
 #include <map>
 #include <set>
@@ -106,6 +108,16 @@ std::string googleError(const Json &reply, const std::string &transport) {
         message = transport.empty() ? "Google did not answer." : transport;
     return cut(message, 200);
 }
+const char *const kMainProfile = "main";
+// Home's profile ids are "main" and "p<n>" (home_profiles.cpp); anything else counts as the main one.
+std::string profileKey(const std::string &profile) {
+    if (profile.empty() || profile.size() > 32 || !idCharacters(profile))
+        return kMainProfile;
+    return profile;
+}
+bool accountKey(const std::string &id) {
+    return id.size() >= 2 && id.size() <= 16 && id[0] == 'a' && idCharacters(id);
+}
 } // namespace
 
 YouTubeAccount::YouTubeAccount(std::string dataRoot, Http http)
@@ -121,14 +133,69 @@ YouTubeAccount::~YouTubeAccount() {
         worker_.join();
 }
 
-Json YouTubeAccount::status(const std::string &clientId, const std::string &clientSecret) {
+YouTubeAccount::Account *YouTubeAccount::findLocked(const std::string &id) {
+    for (Account &account : accounts_)
+        if (account.id == id)
+            return &account;
+    return nullptr;
+}
+
+YouTubeAccount::Account *YouTubeAccount::forProfileLocked(const std::string &profile) {
+    const auto chosen = profiles_.find(profileKey(profile));
+    if (chosen != profiles_.end())
+        if (Account *account = findLocked(chosen->second))
+            return account;
+    return accounts_.empty() ? nullptr : &accounts_.front();
+}
+
+void YouTubeAccount::forgetLocked(const std::string &id) {
+    const std::string gone = id; // `id` may belong to the account being erased
+    accounts_.erase(std::remove_if(accounts_.begin(), accounts_.end(),
+                                   [&gone](const Account &account) { return account.id == gone; }),
+                    accounts_.end());
+    for (auto choice = profiles_.begin(); choice != profiles_.end();)
+        choice = choice->second == gone ? profiles_.erase(choice) : std::next(choice);
+    if (rowWantedId_ == gone)
+        rowWantedId_.clear();
+}
+
+namespace {
+// An account whose channel name has not arrived yet (or that has no channel) is named by its place.
+std::string displayName(const std::string &name, size_t index) {
+    return name.empty() ? "Account " + std::to_string(index + 1) : name;
+}
+} // namespace
+
+Json YouTubeAccount::accountsLocked(const std::string &activeId) const {
+    Json list = Json::array();
+    for (size_t i = 0; i < accounts_.size(); ++i) {
+        Json item = Json::object();
+        item.set("id", Json::text(accounts_[i].id));
+        item.set("name", Json::text(displayName(accounts_[i].name, i)));
+        item.set("active", Json::flag(accounts_[i].id == activeId));
+        list.add(item);
+    }
+    return list;
+}
+
+Json YouTubeAccount::status(const std::string &profile, const std::string &clientId,
+                            const std::string &clientSecret) {
     std::lock_guard<std::mutex> lock(mutex_);
     if (!loaded_)
         loadLocked();
+    const Account *account = forProfileLocked(profile);
     Json result = Json::object();
     result.set("ok", Json::flag(true));
     result.set("configured", Json::flag(!clientId.empty() && !clientSecret.empty()));
-    result.set("linked", Json::flag(!refreshToken_.empty()));
+    result.set("linked", Json::flag(account != nullptr));
+    if (account) {
+        const size_t index = static_cast<size_t>(account - accounts_.data());
+        Json current = Json::object();
+        current.set("id", Json::text(account->id));
+        current.set("name", Json::text(displayName(account->name, index)));
+        result.set("account", current);
+    }
+    result.set("accounts", accountsLocked(account ? account->id : ""));
     if (!deviceCode_.empty()) {
         Json pending = Json::object();
         pending.set("code", Json::text(userCode_));
@@ -137,11 +204,14 @@ Json YouTubeAccount::status(const std::string &clientId, const std::string &clie
         result.set("pending", pending);
     }
     result.set("error", Json::text(error_));
-    result.set("videos", Json::numeric(row_.isObject() ? static_cast<double>(row_["items"].size()) : 0));
+    result.set("videos", Json::numeric(account && account->row.isObject()
+                                           ? static_cast<double>(account->row["items"].size())
+                                           : 0));
     return result;
 }
 
-Json YouTubeAccount::link(const std::string &clientId, const std::string &clientSecret) {
+Json YouTubeAccount::link(const std::string &profile, const std::string &clientId,
+                          const std::string &clientSecret) {
     Json result = Json::object();
     if (clientId.empty() || clientSecret.empty()) {
         result.set("ok", Json::flag(false));
@@ -171,27 +241,29 @@ Json YouTubeAccount::link(const std::string &clientId, const std::string &client
         nextPollMs_ = now + pollGapMs_;
         signInClientId_ = clientId;
         signInClientSecret_ = clientSecret;
+        signInProfile_ = profileKey(profile);
         error_.clear();
     }
     changed_.notify_all();
-    return status(clientId, clientSecret);
+    return status(profile, clientId, clientSecret);
 }
 
-Json YouTubeAccount::unlink() {
+Json YouTubeAccount::unlink(const std::string &profile, const std::string &accountId) {
     std::string token;
     {
         std::lock_guard<std::mutex> lock(mutex_);
         if (!loaded_)
             loadLocked();
-        token = refreshToken_;
-        refreshToken_.clear();
-        accessToken_.clear();
-        accessEndsMs_ = 0;
-        deviceCode_.clear();
         error_.clear();
-        row_ = Json();
-        rowAtMs_ = rowTriedMs_ = 0;
-        (void)::unlink(path_.c_str());
+        if (!deviceCode_.empty()) {
+            // Signing out while a code waits cancels the code; the accounts stay.
+            deviceCode_.clear();
+        } else if (Account *account = accountId.empty() ? forProfileLocked(profile) : findLocked(accountId)) {
+            token = account->refreshToken;
+            const std::string id = account->id;
+            forgetLocked(id);
+            saveLocked();
+        }
     }
     if (!token.empty()) {
         // Best effort: the token is gone from the TV either way.
@@ -205,32 +277,74 @@ Json YouTubeAccount::unlink() {
     return result;
 }
 
-Json YouTubeAccount::subscriptionsRow(const std::string &clientId, const std::string &clientSecret) {
+Json YouTubeAccount::use(const std::string &profile, const std::string &accountId) {
     std::lock_guard<std::mutex> lock(mutex_);
     if (!loaded_)
         loadLocked();
-    if (refreshToken_.empty())
+    Json result = Json::object();
+    if (accounts_.empty()) {
+        result.set("ok", Json::flag(false));
+        result.set("error", Json::text("No YouTube account is signed in."));
+        return result;
+    }
+    std::string target = accountId;
+    if (target.empty()) {
+        const Account *current = forProfileLocked(profile);
+        const size_t index = static_cast<size_t>(current - accounts_.data());
+        target = accounts_[(index + 1) % accounts_.size()].id;
+    } else if (!findLocked(target)) {
+        result.set("ok", Json::flag(false));
+        result.set("error", Json::text("That account is no longer signed in."));
+        return result;
+    }
+    profiles_[profileKey(profile)] = target;
+    saveLocked();
+    const Account *chosen = findLocked(target);
+    Json account = Json::object();
+    account.set("id", Json::text(chosen->id));
+    account.set("name", Json::text(displayName(chosen->name, static_cast<size_t>(chosen - accounts_.data()))));
+    result.set("ok", Json::flag(true));
+    result.set("account", account);
+    return result;
+}
+
+Json YouTubeAccount::subscriptionsRow(const std::string &profile, const std::string &clientId,
+                                      const std::string &clientSecret) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (!loaded_)
+        loadLocked();
+    Account *account = forProfileLocked(profile);
+    if (!account)
         return Json();
     const int64_t now = nowMs();
-    if (now - rowAtMs_ >= kRowAgeMs && now - rowTriedMs_ >= kRowRetryMs && !rowBusy_ && !clientId.empty()) {
-        rowWanted_ = true;
-        rowTriedMs_ = now;
+    // One row is asked for at a time; another account's turn comes at Home's next read.
+    if (now - account->rowAtMs >= kRowAgeMs && now - account->rowTriedMs >= kRowRetryMs &&
+        rowWantedId_.empty() && !clientId.empty()) {
+        rowWantedId_ = account->id;
+        account->rowTriedMs = now;
         rowClientId_ = clientId;
         rowClientSecret_ = clientSecret;
         changed_.notify_all();
     }
-    return row_.isObject() ? row_ : Json();
+    // A fresh object: the cached row is shared and must not gain the picker's fields.
+    Json row = Json::object();
+    row.set("key", Json::text("subs"));
+    row.set("items", account->row.isObject() ? account->row["items"] : Json::array());
+    row.set("account", Json::text(displayName(account->name, static_cast<size_t>(account - accounts_.data()))));
+    row.set("accountId", Json::text(account->id));
+    row.set("accounts", accountsLocked(account->id));
+    return row;
 }
 
 void YouTubeAccount::workerLoop() {
     for (;;) {
-        std::string clientId, clientSecret, device;
+        std::string clientId, clientSecret, device, accountId;
         bool poll = false, refresh = false;
         {
             std::unique_lock<std::mutex> lock(mutex_);
             // A second's sleep is fine grain for the sign-in's five-second polls.
             changed_.wait_for(lock, std::chrono::seconds(1),
-                              [this]() { return stopping_.load() || (rowWanted_ && !rowBusy_); });
+                              [this]() { return stopping_.load() || (!rowWantedId_.empty() && !rowBusy_); });
             if (stopping_.load())
                 return;
             const int64_t now = nowMs();
@@ -246,9 +360,10 @@ void YouTubeAccount::workerLoop() {
                     nextPollMs_ = now + pollGapMs_;
                 }
             }
-            if (!poll && rowWanted_ && !rowBusy_) {
+            if (!poll && !rowWantedId_.empty() && !rowBusy_) {
                 refresh = true;
-                rowWanted_ = false;
+                accountId = rowWantedId_;
+                rowWantedId_.clear();
                 rowBusy_ = true;
                 clientId = rowClientId_;
                 clientSecret = rowClientSecret_;
@@ -257,7 +372,7 @@ void YouTubeAccount::workerLoop() {
         if (poll) {
             pollSignIn(clientId, clientSecret, device);
         } else if (refresh) {
-            refreshRow(clientId, clientSecret);
+            refreshRow(accountId, clientId, clientSecret);
             std::lock_guard<std::mutex> lock(mutex_);
             rowBusy_ = false;
         }
@@ -274,47 +389,105 @@ void YouTubeAccount::pollSignIn(const std::string &clientId, const std::string &
                                 "&device_code=" + encode(deviceCode) +
                                 "&grant_type=" + encode("urn:ietf:params:oauth:grant-type:device_code"),
                             "", reply, status, error);
-    std::lock_guard<std::mutex> lock(mutex_);
-    if (deviceCode_ != deviceCode || !ok) // cancelled meanwhile, or no answer: the next poll asks again
-        return;
-    const std::string code = reply["error"].isString() ? reply["error"].string() : "";
-    if (status == 200 && !reply["refresh_token"].string().empty()) {
-        refreshToken_ = reply["refresh_token"].string();
-        accessToken_ = reply["access_token"].string();
-        accessEndsMs_ = nowMs() + (static_cast<int64_t>(reply["expires_in"].number(3600)) - 60) * 1000;
-        deviceCode_.clear();
-        error_.clear();
-        row_ = Json();
-        rowAtMs_ = 0;
-        rowTriedMs_ = nowMs();
-        rowWanted_ = true; // the row is fetched straight away
-        rowClientId_ = clientId;
-        rowClientSecret_ = clientSecret;
-        saveLocked();
+    std::string added, token;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (deviceCode_ != deviceCode || !ok) // cancelled meanwhile, or no answer: the next poll asks again
+            return;
+        const std::string code = reply["error"].isString() ? reply["error"].string() : "";
+        if (status == 200 && !reply["refresh_token"].string().empty()) {
+            Account account;
+            account.id = "a" + std::to_string(nextId_++);
+            account.refreshToken = reply["refresh_token"].string();
+            account.accessToken = reply["access_token"].string();
+            account.accessEndsMs = nowMs() + (static_cast<int64_t>(reply["expires_in"].number(3600)) - 60) * 1000;
+            account.rowTriedMs = nowMs();
+            accounts_.push_back(account);
+            profiles_[signInProfile_.empty() ? std::string(kMainProfile) : signInProfile_] = account.id;
+            deviceCode_.clear();
+            error_.clear();
+            rowWantedId_ = account.id; // the row is fetched straight away
+            rowClientId_ = clientId;
+            rowClientSecret_ = clientSecret;
+            saveLocked();
+            added = account.id;
+            token = account.accessToken;
+        } else if (code == "authorization_pending") {
+        } else if (code == "slow_down") {
+            pollGapMs_ += 5000;
+        } else {
+            deviceCode_.clear();
+            error_ = code == "access_denied"   ? "The sign-in was declined on the phone."
+                     : code == "expired_token" ? "The code expired. Choose Sign in to get a new one."
+                                               : "Google refused the sign-in: " + googleError(reply, error);
+        }
+    }
+    if (!added.empty()) {
+        // Named before the row is fetched, so the picker shows the channel rather than "Account 2".
+        if (!token.empty())
+            identify(added, token);
         changed_.notify_all();
-    } else if (code == "authorization_pending") {
-    } else if (code == "slow_down") {
-        pollGapMs_ += 5000;
-    } else {
-        deviceCode_.clear();
-        error_ = code == "access_denied"   ? "The sign-in was declined on the phone."
-                 : code == "expired_token" ? "The code expired. Choose Sign in to get a new one."
-                                           : "Google refused the sign-in: " + googleError(reply, error);
     }
 }
 
-bool YouTubeAccount::accessToken(const std::string &clientId, const std::string &clientSecret,
-                                 std::string &token) {
+void YouTubeAccount::identify(const std::string &accountId, const std::string &token) {
+    Json reply;
+    long status = 0;
+    std::string error;
+    if (!request(kApi + "channels?part=snippet&mine=true", "", token, reply, status, error) || status != 200)
+        return;
+    const Json channel = reply["items"][static_cast<size_t>(0)];
+    const std::string id = channel["id"].string();
+    const std::string name = cut(channel["snippet"]["title"].string(), 80);
+    std::lock_guard<std::mutex> lock(mutex_);
+    Account *account = findLocked(accountId);
+    if (!account)
+        return;
+    if (!name.empty())
+        account->name = name;
+    if (channelId(id))
+        account->channelId = id;
+    // The same channel signed in again: the earlier entry keeps its place and the profiles that
+    // chose it, and takes the new token.
+    std::string kept;
+    if (!account->channelId.empty())
+        for (Account &other : accounts_)
+            if (&other != account && other.channelId == account->channelId) {
+                other.refreshToken = account->refreshToken;
+                other.accessToken = account->accessToken;
+                other.accessEndsMs = account->accessEndsMs;
+                other.name = account->name;
+                kept = other.id;
+                break;
+            }
+    if (!kept.empty()) {
+        const std::string gone = account->id;
+        const bool wanted = rowWantedId_ == gone;
+        for (auto &choice : profiles_)
+            if (choice.second == gone)
+                choice.second = kept;
+        forgetLocked(gone);
+        if (wanted)
+            rowWantedId_ = kept;
+        if (Account *survivor = findLocked(kept))
+            survivor->rowAtMs = survivor->rowTriedMs = 0; // fetched again for the renewed sign-in
+    }
+    saveLocked();
+}
+
+bool YouTubeAccount::accessToken(const std::string &accountId, const std::string &clientId,
+                                 const std::string &clientSecret, std::string &token) {
     std::string refresh;
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        if (!accessToken_.empty() && nowMs() < accessEndsMs_) {
-            token = accessToken_;
+        const Account *account = findLocked(accountId);
+        if (!account)
+            return false;
+        if (!account->accessToken.empty() && nowMs() < account->accessEndsMs) {
+            token = account->accessToken;
             return true;
         }
-        if (refreshToken_.empty())
-            return false;
-        refresh = refreshToken_;
+        refresh = account->refreshToken;
     }
     Json reply;
     long status = 0;
@@ -324,27 +497,38 @@ bool YouTubeAccount::accessToken(const std::string &clientId, const std::string 
                                 "&refresh_token=" + encode(refresh) + "&grant_type=refresh_token",
                             "", reply, status, error);
     std::lock_guard<std::mutex> lock(mutex_);
+    Account *account = findLocked(accountId);
+    if (!account || account->refreshToken != refresh) // signed out or renewed meanwhile
+        return false;
     if (ok && status == 200 && !reply["access_token"].string().empty()) {
-        accessToken_ = reply["access_token"].string();
-        accessEndsMs_ = nowMs() + (static_cast<int64_t>(reply["expires_in"].number(3600)) - 60) * 1000;
-        token = accessToken_;
+        account->accessToken = reply["access_token"].string();
+        account->accessEndsMs = nowMs() + (static_cast<int64_t>(reply["expires_in"].number(3600)) - 60) * 1000;
+        token = account->accessToken;
         return true;
     }
     if (ok && reply["error"].isString() && reply["error"].string() == "invalid_grant") {
         // Revoked in the Google account, or the project's test sign-ins lapsed after seven days.
-        refreshToken_.clear();
-        accessToken_.clear();
-        row_ = Json();
-        error_ = "Google ended the sign-in. Choose Sign in again.";
+        const size_t index = static_cast<size_t>(account - accounts_.data());
+        error_ = "Google ended the sign-in of " + displayName(account->name, index) + ". Choose Sign in again.";
+        forgetLocked(accountId);
         saveLocked();
     }
     return false;
 }
 
-void YouTubeAccount::refreshRow(const std::string &clientId, const std::string &clientSecret) {
+void YouTubeAccount::refreshRow(const std::string &accountId, const std::string &clientId,
+                                const std::string &clientSecret) {
     std::string token;
-    if (!accessToken(clientId, clientSecret, token))
+    if (!accessToken(accountId, clientId, clientSecret, token))
         return;
+    bool named = true;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        const Account *account = findLocked(accountId);
+        named = account && !account->name.empty();
+    }
+    if (!named) // an account from before names were kept, or one whose first ask failed
+        identify(accountId, token);
     Json reply;
     long status = 0;
     std::string error;
@@ -429,14 +613,17 @@ void YouTubeAccount::refreshRow(const std::string &clientId, const std::string &
         items.add(item);
     }
     std::lock_guard<std::mutex> lock(mutex_);
-    rowTriedMs_ = nowMs();
-    if (items.size() == 0 || refreshToken_.empty())
+    Account *account = findLocked(accountId);
+    if (!account)
+        return; // signed out meanwhile
+    account->rowTriedMs = nowMs();
+    if (items.size() == 0)
         return; // the last row stays; a failure is tried again in a quarter of an hour
     Json row = Json::object();
     row.set("key", Json::text("subs"));
     row.set("items", items);
-    row_ = row;
-    rowAtMs_ = nowMs();
+    account->row = row;
+    account->rowAtMs = nowMs();
     saveLocked();
 }
 
@@ -491,6 +678,7 @@ bool YouTubeAccount::request(const std::string &url, const std::string &form, co
     return true;
 }
 
+
 void YouTubeAccount::loadLocked() {
     loaded_ = true;
     const int descriptor = open(path_.c_str(), O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
@@ -512,21 +700,72 @@ void YouTubeAccount::loadLocked() {
     const Json saved = Json::parse(text);
     if (!saved.isObject())
         return;
-    refreshToken_ = saved["refreshToken"].string();
-    if (saved["row"].isObject() && saved["row"]["items"].isArray())
-        row_ = saved["row"];
-    rowAtMs_ = static_cast<int64_t>(saved["rowAt"].number());
+    const auto readRow = [](const Json &from, Account &account) {
+        if (from["row"].isObject() && from["row"]["items"].isArray())
+            account.row = from["row"];
+        account.rowAtMs = static_cast<int64_t>(from["rowAt"].number());
+    };
+    if (!saved["accounts"].isArray()) {
+        // The file from before accounts: one token, which becomes the first account.
+        Account account;
+        account.id = "a1";
+        account.refreshToken = saved["refreshToken"].string();
+        if (account.refreshToken.empty())
+            return;
+        readRow(saved, account);
+        accounts_.push_back(account);
+        nextId_ = 2;
+        return;
+    }
+    int highest = 0;
+    for (const Json &entry : saved["accounts"].items()) {
+        Account account;
+        account.id = entry["id"].string();
+        account.refreshToken = entry["refreshToken"].string();
+        if (!accountKey(account.id) || account.refreshToken.empty() || findLocked(account.id))
+            continue;
+        account.name = cut(entry["name"].string(), 80);
+        account.channelId = entry["channelId"].string();
+        if (!channelId(account.channelId))
+            account.channelId.clear();
+        readRow(entry, account);
+        accounts_.push_back(account);
+        highest = std::max(highest, std::atoi(account.id.c_str() + 1));
+    }
+    for (const std::string &profile : saved["profiles"].keys()) {
+        const std::string id = saved["profiles"][profile].string();
+        if (profileKey(profile) == profile && findLocked(id))
+            profiles_[profile] = id;
+    }
+    nextId_ = std::max(highest + 1, static_cast<int>(saved["nextId"].number(1)));
+    if (nextId_ < 1 || nextId_ > 1000000)
+        nextId_ = highest + 1;
 }
 
 void YouTubeAccount::saveLocked() {
-    if (refreshToken_.empty()) {
+    if (accounts_.empty()) {
         (void)::unlink(path_.c_str());
         return;
     }
+    Json list = Json::array();
+    for (const Account &account : accounts_) {
+        Json entry = Json::object();
+        entry.set("id", Json::text(account.id));
+        entry.set("name", Json::text(account.name));
+        entry.set("channelId", Json::text(account.channelId));
+        entry.set("refreshToken", Json::text(account.refreshToken));
+        entry.set("row", account.row.isObject() ? account.row : Json::parse("null"));
+        entry.set("rowAt", Json::numeric(static_cast<double>(account.rowAtMs)));
+        list.add(entry);
+    }
+    Json profiles = Json::object();
+    for (const auto &choice : profiles_)
+        profiles.set(choice.first, Json::text(choice.second));
     Json saved = Json::object();
-    saved.set("refreshToken", Json::text(refreshToken_));
-    saved.set("row", row_.isObject() ? row_ : Json::parse("null"));
-    saved.set("rowAt", Json::numeric(static_cast<double>(rowAtMs_)));
+    saved.set("version", Json::numeric(2));
+    saved.set("nextId", Json::numeric(nextId_));
+    saved.set("accounts", list);
+    saved.set("profiles", profiles);
     const std::string contents = saved.dump();
     const std::string temporary = path_ + ".tmp";
     const int descriptor = open(temporary.c_str(), O_CREAT | O_TRUNC | O_WRONLY | O_CLOEXEC | O_NOFOLLOW, 0600);

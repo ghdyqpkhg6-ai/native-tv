@@ -106,6 +106,8 @@ void Application::response(const Response &response) {
                 state_.install = data["install"];
             services_.read("install", Operation::InstallStatus);
             rebuildMenu();
+        } else if (pending_.operation == Operation::YouTubeUse) {
+            toast("Showing " + data["account"]["name"].string("the next account") + "'s subscriptions");
         } else if (pending_.operation != Operation::OpenHomeItem &&
                    pending_.operation != Operation::Recents)
             toast("Saved");

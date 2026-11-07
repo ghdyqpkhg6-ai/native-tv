@@ -297,6 +297,28 @@ std::vector<CardRow> homeRows(const std::string &tab, const Json &catalogue, con
                 card.command = navigate("details");
             row.cards.push_back(card);
         }
+        if (row.key == "subs" && !source["accountId"].string().empty()) {
+            // Fork: the row opens on its account, and OK there switches this Home profile to the
+            // next account signed in (or, with only one, opens the page that adds another).
+            const std::vector<Json> accounts = source["accounts"].items();
+            Card picker;
+            picker.id = "yt-account";
+            picker.kind = "ytaccount";
+            picker.title = source["account"].string("YouTube account");
+            picker.data = source["accounts"];
+            if (accounts.size() > 1) {
+                std::string next;
+                for (size_t i = 0; i < accounts.size(); ++i)
+                    if (accounts[i]["active"].boolean())
+                        next = accounts[(i + 1) % accounts.size()]["name"].string();
+                picker.subtitle = next.empty() ? "Switch account" : "Switch to " + next;
+                picker.command = post(Operation::YouTubeUse, Json::object());
+            } else {
+                picker.subtitle = "Add another account";
+                picker.command = navigate("youtube-account");
+            }
+            row.cards.insert(row.cards.begin(), picker);
+        }
         if (!row.cards.empty())
             built[row.key] = row;
     }

@@ -251,6 +251,7 @@ class HttpFrontDoor {
     StatsCollector *statsCollector() const;
     // What the main Home profile is called until the owner renames it: the TV's own series.
     std::string mainProfileName() const;
+    std::string activeHomeProfile() const; // fork: home.json's "profile"
     void dispatch(HttpExchange &exchange) const;
     service::PiccapStatus *piccapStatus() const;
     // The cached reverse-DNS name of an address; a stale one is looked up behind
