@@ -513,7 +513,19 @@ void Application::buildFrame() {
     // Home's rows depend on it (Ribbon keeps only the apps), so a change rebuilds them.
     const home::Style style =
         home::styleOf(optimistic_.text("layout.style", state_.catalogue["layout"]["style"].string()));
-    if (style != home::style()) {
+    // Fork: the app bar and its options (home_layout.hpp), likewise; a change lays Home out again.
+    Json barLayout = Json::object();
+    const Json shownLayout = state_.catalogue["layout"];
+    for (const char *key : {"appBar", "barSize", "barSpacing", "barOpacity", "barGlow", "barAccent", "barPosition",
+                            "barSpeed", "barHide"})
+        barLayout.set(key, Json::text(optimistic_.text(std::string("layout.") + key, shownLayout[key].string())));
+    for (const char *key : {"barNames", "barFade"})
+        barLayout.set(key, Json::flag(optimistic_.flag(std::string("layout.") + key, shownLayout[key].boolean(true))));
+    const home::BarConfig barConfig = home::barConfigOf(barLayout);
+    const bool barChanged = barConfig != home::bar();
+    if (barChanged)
+        home::setBar(barConfig);
+    if (style != home::style() || barChanged) {
         home::setStyle(style);
         rebuildHome();
     }

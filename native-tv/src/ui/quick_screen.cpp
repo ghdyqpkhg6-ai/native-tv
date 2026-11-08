@@ -12,12 +12,14 @@
 #include "domain/models.hpp"
 #include "domain/say.hpp"
 #include "ui/application.hpp"
+#include "ui/home_layout.hpp"
 #include "ui/kit/overlay.hpp"
 #include "ui/kit/tuning.hpp"
 #include "ui/optimistic.hpp"
 #include "ui/overlay_routes.hpp"
 #include "ui/profile_names.hpp"
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstdlib>
 #include <iterator>
@@ -38,13 +40,15 @@ constexpr kit::SpringTuning kSlide = {420, 1};
 constexpr const char *kStats = "quick:stats", *kNow = "quick:now";
 constexpr const char *kStatsMemory = "quick.stats", *kNowMemory = "quick.now";
 
-enum class Level { Main, Picture, Sound, Input, Sleep, Layout, Rows, Appearance };
+enum class Level { Main, Picture, Sound, Input, Sleep, Layout, Rows, Appearance, BarOptions };
 const char *levelName(Level level) {
     switch (level) {
     case Level::Rows:
         return "rows";
     case Level::Appearance:
         return "appearance";
+    case Level::BarOptions:
+        return "barOptions";
     case Level::Picture:
         return "picture";
     case Level::Sound:
@@ -122,13 +126,91 @@ std::string styleTitle(const std::string &value) {
 std::string feedRowIcon(const std::string &key) {
     return key == "apps" ? "apps" : key == "youtube" || key == "subs" ? "play" : "movie";
 }
+// Fork: the app bar's options (Appearance > App bar options), stepped as the choices above are.
+const LayoutChoice kBarChoices[] = {
+    {"barSize", "display", "m", {"s", "m", "l"}},
+    {"barSpacing", "apps", "normal", {"tight", "normal", "wide"}},
+    {"barOpacity", "palette", "50", {"0", "25", "50", "75", "100"}},
+    {"barGlow", "palette", "medium", {"off", "low", "medium", "high"}},
+    {"barAccent", "palette", "auto", {"auto", "blue", "violet", "magenta", "cyan", "amber", "green", "red", "white"}},
+    {"barPosition", "display", "default", {"default", "alternate"}},
+    {"barSpeed", "speed", "smooth", {"instant", "fast", "smooth", "cinematic"}},
+    {"barHide", "timer", "auto", {"auto", "off", "3", "5", "10", "30"}}};
 const LayoutChoice *layoutChoice(const std::string &key) {
     for (const LayoutChoice &choice : kChoices)
         if (key == choice.key)
             return &choice;
+    for (const LayoutChoice &choice : kBarChoices)
+        if (key == choice.key)
+            return &choice;
     return nullptr;
 }
+std::string barTitle(const std::string &value) {
+    static const std::vector<std::pair<std::string, std::string>> titles = {
+        {"aurora", "Aurora Glass Bar"}, {"horizon", "Horizon Ribbon"}, {"cards", "Floating Cards"},
+        {"neon", "Neon Edge"},          {"circles", "Circular Dock"},  {"vertical", "Vertical Stack"},
+        {"halo", "Halo Carousel"},      {"fade", "Minimal Fade Bar"},  {"pills", "Glass Pill Tabs"}};
+    for (const auto &title : titles)
+        if (title.first == value)
+            return msg("tv.bars." + value, title.second);
+    return msg("tv.quick.off", "Off");
+}
+std::string barOptionTitle(const std::string &key) {
+    if (key == "barSize")
+        return msg("tv.quick.barSize", "Size");
+    if (key == "barSpacing")
+        return msg("tv.quick.barSpacing", "Icon spacing");
+    if (key == "barOpacity")
+        return msg("tv.quick.barOpacity", "Background opacity");
+    if (key == "barGlow")
+        return msg("tv.quick.barGlow", "Glow");
+    if (key == "barAccent")
+        return msg("tv.quick.barAccent", "Accent colour");
+    if (key == "barPosition")
+        return msg("tv.quick.barPosition", "Position");
+    if (key == "barSpeed")
+        return msg("tv.quick.barSpeed", "Animation");
+    if (key == "barHide")
+        return msg("tv.quick.barHide", "Hide when idle");
+    if (key == "barNames")
+        return msg("tv.quick.barNames", "App names");
+    return msg("tv.quick.barFade", "Fade into the wallpaper");
+}
 std::string choiceLabel(const std::string &key, const std::string &value) {
+    if (key == "barSize")
+        return value == "s" ? msg("tv.quick.small", "Small") : value == "l" ? msg("tv.quick.large", "Large")
+                                                                            : msg("tv.quick.medium", "Medium");
+    if (key == "barSpacing")
+        return value == "tight" ? msg("tv.quick.tight", "Tight") : value == "wide" ? msg("tv.quick.wide", "Wide")
+                                                                                   : msg("tv.quick.normal", "Normal");
+    if (key == "barOpacity")
+        return value + " %";
+    if (key == "barGlow")
+        return value == "off"    ? msg("tv.quick.off", "Off")
+               : value == "low"  ? msg("tv.quick.low", "Low")
+               : value == "high" ? msg("tv.quick.high", "High")
+                                 : msg("tv.quick.medium", "Medium");
+    if (key == "barAccent") {
+        if (value == "auto")
+            return msg("tv.quick.auto", "Automatic");
+        std::string label = value;
+        label[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(label[0])));
+        return label;
+    }
+    if (key == "barPosition") {
+        const bool vertical = home::barVertical();
+        return value == "alternate" ? (vertical ? msg("tv.quick.left", "Left") : msg("tv.quick.top", "Top"))
+                                    : (vertical ? msg("tv.quick.right", "Right") : msg("tv.quick.bottom", "Bottom"));
+    }
+    if (key == "barSpeed")
+        return value == "instant"     ? msg("tv.quick.instant", "Instant")
+               : value == "fast"      ? msg("tv.quick.fast", "Fast")
+               : value == "cinematic" ? msg("tv.quick.cinematic", "Cinematic")
+                                      : msg("tv.quick.smooth", "Smooth");
+    if (key == "barHide")
+        return value == "auto"  ? msg("tv.quick.auto", "Automatic")
+               : value == "off" ? msg("tv.quick.never", "Never")
+                                : msg("tv.quick.seconds", "{n} s", fields({{"n", Json::text(value)}}));
     if (key == "motion")
         return value == "off"    ? msg("tv.quick.motionOff", "Off")
                : value == "full" ? msg("tv.quick.motionFull", "Full")
@@ -241,7 +323,7 @@ class QuickScreen final : public ScreenView {
         }
         syncShown(host);
         // The switches follow what is shown, so a refusal that takes one back moves it back.
-        if (level_ == Level::Layout)
+        if (level_ == Level::Layout || level_ == Level::BarOptions)
             for (size_t i = 0; i < rows_.size(); ++i)
                 if (rows_[i].kind == Row::Kind::Switch)
                     host.motion().tween("quick:t:" + std::to_string(i), layoutFlag(host, rows_[i].id) ? 1 : 0,
@@ -441,7 +523,9 @@ class QuickScreen final : public ScreenView {
     static bool layoutServer(const ScreenHost &host, const std::string &key) {
         Json layout = host.view().catalogue["layout"];
         return key == "clockFormat"                                                 ? layout["clockFormat"].string() == "24h"
-               : key == "appNames" || key == "showInputs" || key == "showLgHome" ? layout[key].boolean(true)
+               : key == "appNames" || key == "showInputs" || key == "showLgHome" || key == "barNames" ||
+                       key == "barFade"
+                   ? layout[key].boolean(true)
                                                                                   : layout[key].boolean(false);
     }
     bool layoutFlag(ScreenHost &host, const std::string &key) {
@@ -482,6 +566,10 @@ class QuickScreen final : public ScreenView {
                               Json::text(host.view().catalogue["layout"]["liveWallpaper"].string()),
                               layoutWrite("liveWallpaper"));
         host.invalidate();
+    }
+    // Fork: the app bar design as shown: a choice still being saved already counts.
+    std::string barValue(ScreenHost &host) {
+        return host.optimistic().text("layout.appBar", host.view().catalogue["layout"]["appBar"].string("off"));
     }
     // Fork: Home's style as shown: a choice still being saved already counts.
     std::string styleValue(ScreenHost &host) {
@@ -585,6 +673,8 @@ class QuickScreen final : public ScreenView {
             return msg("tv.quick.rows", "Home rows");
         case Level::Appearance:
             return msg("tv.quick.appearance", "Appearance");
+        case Level::BarOptions:
+            return msg("tv.quick.barOptions", "App bar options");
         default:
             return msg("tv.quick.title", "Quick settings");
         }
@@ -618,7 +708,9 @@ class QuickScreen final : public ScreenView {
             return styleTitle(styleValue(host));
         if (level_ == Level::Layout && row.id == "liveWallpaper")
             return liveTitle(host, liveValue(host));
-        if (level_ == Level::Layout)
+        if (level_ == Level::Appearance && row.id == "appBarStyle")
+            return barTitle(barValue(host));
+        if (level_ == Level::Layout || level_ == Level::BarOptions)
             if (const LayoutChoice *choice = layoutChoice(row.id))
                 return choiceLabel(row.id, layoutText(host, *choice));
         if (level_ == Level::Rows) {
@@ -718,6 +810,19 @@ class QuickScreen final : public ScreenView {
         } else if (level_ == Level::Appearance) {
             for (const char *value : kStyles)
                 add(Row::Kind::Choice, value, "palette", styleTitle(value), value);
+            add(Row::Kind::Plain, "appBarStyle", "apps", msg("tv.quick.appBar", "App bar style"), "", true);
+            if (barValue(host) != "off")
+                add(Row::Kind::Plain, "barOptions", "settings", msg("tv.quick.barOptions", "App bar options"), "", true);
+        } else if (level_ == Level::BarOptions) {
+            // Only what the chosen design uses: a background opacity only where it has a background.
+            const std::string design = barValue(host);
+            const bool background = design == "aurora" || design == "horizon" || design == "neon" ||
+                                    design == "vertical" || design == "pills";
+            for (const LayoutChoice &choice : kBarChoices)
+                if (std::string(choice.key) != "barOpacity" || background)
+                    add(Row::Kind::Plain, choice.key, choice.icon, barOptionTitle(choice.key));
+            add(Row::Kind::Switch, "barNames", "apps", barOptionTitle("barNames"));
+            add(Row::Kind::Switch, "barFade", "display", barOptionTitle("barFade"));
         } else {
             static const std::vector<std::pair<std::string, std::string>> titles = {
                 {"clockFormat", msg("tv.quick.clock24", "24-hour clock")},
@@ -781,15 +886,17 @@ class QuickScreen final : public ScreenView {
             return msg("tv.quick.volumeHint", "Left and Right adjust. OK mutes.");
         if (level_ == Level::Main && row.id == "light")
             return msg("tv.quick.lightHint", "Left and Right adjust.");
-        if (level_ == Level::Layout && layoutChoice(row.id))
+        if ((level_ == Level::Layout || level_ == Level::BarOptions) && layoutChoice(row.id))
             return msg("tv.quick.stepHint", "Left and Right change it. Back returns.");
+        if (level_ == Level::Appearance && (row.id == "appBarStyle" || row.id == "barOptions"))
+            return msg("tv.quick.openHint", "OK opens it. Back returns.");
         if (level_ == Level::Layout && row.id == "wallpapers")
             return msg("tv.quick.galleryHint", "OK opens the gallery. Back returns.");
         if (level_ == Level::Layout && (row.id == "feedRows" || row.id == "youtubeAccount"))
             return msg("tv.quick.openHint", "OK opens it. Back returns.");
         if (level_ == Level::Rows)
             return msg("tv.quick.rowsHint", "OK shows or hides it. Left and Right move it. Back returns.");
-        if (level_ == Level::Layout)
+        if (level_ == Level::Layout || level_ == Level::BarOptions)
             return msg("tv.quick.switchHint", "OK switches. Left or Back returns.");
         if (level_ != Level::Main)
             return msg("tv.quick.levelHint", "OK chooses. Left or Back returns.");
@@ -853,7 +960,8 @@ class QuickScreen final : public ScreenView {
             // The rows Left and Right step through the values of show a chevron on each side.
             item.stepper = (level_ == Level::Main && steps(row.id) && loaded_ && !dim) ||
                            (level_ == Level::Layout &&
-                            (layoutChoice(row.id) != nullptr || row.id == "liveWallpaper"));
+                            (layoutChoice(row.id) != nullptr || row.id == "liveWallpaper")) ||
+                           (level_ == Level::BarOptions && layoutChoice(row.id) != nullptr);
         }
         kit::settingsRow(paint, item);
         float right = rest.x + rest.w - layout::srowPadRight;
@@ -969,7 +1077,7 @@ class QuickScreen final : public ScreenView {
                 stepLive(host, direction);
                 return;
             }
-            if (level_ == Level::Layout)
+            if (level_ == Level::Layout || level_ == Level::BarOptions)
                 if (const LayoutChoice *choice = layoutChoice(row.id)) {
                     stepChoice(host, *choice, direction);
                     return;
@@ -1116,6 +1224,14 @@ class QuickScreen final : public ScreenView {
             stepLive(host, 1);
             return;
         }
+        if (level_ == Level::Appearance && row.id == "appBarStyle") {
+            close(host, "app-bars");
+            return;
+        }
+        if (level_ == Level::Appearance && row.id == "barOptions") {
+            openLevel(host, Level::BarOptions);
+            return;
+        }
         if (level_ == Level::Appearance) {
             // One press: the style is saved and Home shows it straight away.
             host.optimistic().set("layout.style", Json::text(row.raw),
@@ -1128,7 +1244,7 @@ class QuickScreen final : public ScreenView {
             close(host, "youtube-account");
             return;
         }
-        if (level_ == Level::Layout) {
+        if (level_ == Level::Layout || level_ == Level::BarOptions) {
             if (const LayoutChoice *choice = layoutChoice(row.id)) {
                 stepChoice(host, *choice, 1);
                 return;

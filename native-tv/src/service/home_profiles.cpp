@@ -18,7 +18,10 @@ const char *kLayoutKeys[] = {"rows", "order", "sort", "hidden", "kinds", "channe
                              "picture", "appNames", "clockFormat", "showInputs",
                              "showLgHome", "showLive", "colours", "motion",
                              "wallpaper", "wallpaperMode", "wallpaperRotate",
-                             "feedOrder", "feedHidden", "style", "liveWallpaper", "liveSound"};
+                             "feedOrder", "feedHidden", "style", "liveWallpaper", "liveSound",
+                             "appBar", "barSize", "barSpacing", "barOpacity", "barGlow",
+                             "barAccent", "barPosition", "barSpeed", "barHide", "barNames",
+                             "barFade"};
 // Fork: the rows of Home's own tab, in the order they are shown, and the ones switched off. The
 // default is v0.118.0's order; a row with nothing in it (no YouTube key, no account) is skipped.
 const char *const kFeedRows[] = {"apps", "trending", "movies", "series", "netflix", "youtube",
@@ -31,6 +34,18 @@ std::vector<std::string> feedKeys() {
 const char *const kMotionLevels[] = {"off", "subtle", "full"};
 // Fork: Home's look, chosen in Home settings > Appearance: "google" is v0.118.0's.
 const char *const kStyles[] = {"google", "classic", "glass", "ribbon"};
+// Fork: Home's app bar and its options (ui/home_layout.hpp reads them; "auto" is the design's own).
+const char *const kAppBars[] = {"off", "aurora", "horizon", "cards", "neon", "circles", "vertical",
+                                "halo", "fade", "pills"};
+const char *const kBarSizes[] = {"s", "m", "l"};
+const char *const kBarSpacings[] = {"tight", "normal", "wide"};
+const char *const kBarOpacities[] = {"0", "25", "50", "75", "100"};
+const char *const kBarGlows[] = {"off", "low", "medium", "high"};
+const char *const kBarAccents[] = {"auto", "blue", "violet", "magenta", "cyan", "amber", "green",
+                                   "red", "white"};
+const char *const kBarPositions[] = {"default", "alternate"};
+const char *const kBarSpeeds[] = {"instant", "fast", "smooth", "cinematic"};
+const char *const kBarHides[] = {"auto", "off", "3", "5", "10", "30"};
 const char *const kWallpaperModes[] = {"auto", "fit", "fill", "blur"};
 // "daylight": the gallery's bright pictures by day, warm or dim ones in the evening, dark ones at night.
 const char *const kRotateMinutes[] = {"off", "5", "15", "30", "60", "daylight"};
@@ -211,6 +226,17 @@ Json defaultDocument() {
     document.set("style", Json::text("google"));
     document.set("liveWallpaper", Json::text(""));
     document.set("liveSound", Json::flag(false));
+    document.set("appBar", Json::text("off"));
+    document.set("barSize", Json::text("m"));
+    document.set("barSpacing", Json::text("normal"));
+    document.set("barOpacity", Json::text("50"));
+    document.set("barGlow", Json::text("medium"));
+    document.set("barAccent", Json::text("auto"));
+    document.set("barPosition", Json::text("default"));
+    document.set("barSpeed", Json::text("smooth"));
+    document.set("barHide", Json::text("auto"));
+    document.set("barNames", Json::flag(true));
+    document.set("barFade", Json::flag(true));
     document.set("wallpaper", Json::text(""));
     document.set("wallpaperMode", Json::text("auto"));
     document.set("wallpaperRotate", Json::text("off"));
@@ -398,6 +424,17 @@ Json normalizeHomeDocument(const Json &raw) {
     result.set("motion", Json::text(oneOf(raw["motion"], kMotionLevels, "subtle")));
     result.set("style", Json::text(oneOf(raw["style"], kStyles, "google")));
     result.set("liveSound", Json::flag(raw["liveSound"].boolean()));
+    result.set("appBar", Json::text(oneOf(raw["appBar"], kAppBars, "off")));
+    result.set("barSize", Json::text(oneOf(raw["barSize"], kBarSizes, "m")));
+    result.set("barSpacing", Json::text(oneOf(raw["barSpacing"], kBarSpacings, "normal")));
+    result.set("barOpacity", Json::text(oneOf(raw["barOpacity"], kBarOpacities, "50")));
+    result.set("barGlow", Json::text(oneOf(raw["barGlow"], kBarGlows, "medium")));
+    result.set("barAccent", Json::text(oneOf(raw["barAccent"], kBarAccents, "auto")));
+    result.set("barPosition", Json::text(oneOf(raw["barPosition"], kBarPositions, "default")));
+    result.set("barSpeed", Json::text(oneOf(raw["barSpeed"], kBarSpeeds, "smooth")));
+    result.set("barHide", Json::text(oneOf(raw["barHide"], kBarHides, "auto")));
+    result.set("barNames", Json::flag(!raw["barNames"].valid() || raw["barNames"].boolean(true)));
+    result.set("barFade", Json::flag(!raw["barFade"].valid() || raw["barFade"].boolean(true)));
     result.set("liveWallpaper", Json::text(homeVideoId(raw["liveWallpaper"].string())
                                                ? raw["liveWallpaper"].string() : ""));
     result.set("wallpaper", Json::text(wallpaperChoice(raw["wallpaper"], "")));
@@ -516,7 +553,17 @@ HomeDocumentUpdate updateHomeLayout(const Json &input, const Json &body) {
     const Json availableChannels = body.has("channels") ? body["channels"] : current["channels"];
     proposed.set("channels", strings(ordered(stringList(channelOrder),
         stringList(availableChannels, kMaximumChannels))));
-    const char *booleanKeys[] = {"picture", "appNames", "showInputs", "showLgHome", "showLive", "liveSound"};
+    proposed.set("appBar", Json::text(oneOf(body["appBar"], kAppBars, current["appBar"].string("off"))));
+    proposed.set("barSize", Json::text(oneOf(body["barSize"], kBarSizes, current["barSize"].string("m"))));
+    proposed.set("barSpacing", Json::text(oneOf(body["barSpacing"], kBarSpacings, current["barSpacing"].string("normal"))));
+    proposed.set("barOpacity", Json::text(oneOf(body["barOpacity"], kBarOpacities, current["barOpacity"].string("50"))));
+    proposed.set("barGlow", Json::text(oneOf(body["barGlow"], kBarGlows, current["barGlow"].string("medium"))));
+    proposed.set("barAccent", Json::text(oneOf(body["barAccent"], kBarAccents, current["barAccent"].string("auto"))));
+    proposed.set("barPosition", Json::text(oneOf(body["barPosition"], kBarPositions, current["barPosition"].string("default"))));
+    proposed.set("barSpeed", Json::text(oneOf(body["barSpeed"], kBarSpeeds, current["barSpeed"].string("smooth"))));
+    proposed.set("barHide", Json::text(oneOf(body["barHide"], kBarHides, current["barHide"].string("auto"))));
+    const char *booleanKeys[] = {"picture", "appNames", "showInputs", "showLgHome", "showLive", "liveSound",
+                                 "barNames", "barFade"};
     for (const char *key : booleanKeys)
         proposed.set(key, body[key].isBoolean() ? body[key] : current[key]);
     proposed.set("clockFormat", Json::text(body["clockFormat"].string() == "12h" ||

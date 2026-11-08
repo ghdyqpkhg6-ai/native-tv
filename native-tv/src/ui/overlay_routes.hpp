@@ -14,6 +14,8 @@ std::unique_ptr<ScreenView> makeEditorScreen(const std::string &route);
 std::unique_ptr<ScreenView> makeWallpaperScreen(const std::string &route);
 // Fork: the YouTube account page (youtube_screen.cpp), for the subscriptions row.
 std::unique_ptr<ScreenView> makeYouTubeScreen(const std::string &route);
+// Fork: the app bar designs (app_bar_screen.cpp).
+std::unique_ptr<ScreenView> makeAppBarScreen(const std::string &route);
 
 // Where closing a screen goes: back to Home as it was when Home (or one of these screens, which
 // were reached from Home) opened it, otherwise to the page it came from.

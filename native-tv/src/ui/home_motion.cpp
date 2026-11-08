@@ -60,6 +60,11 @@ size_t rowIndex(const std::vector<CardRow> &rows, const char *key) {
 size_t defaultRow(const HomeState &home) {
     if (home.tabs.empty() || home.tabs[home.tab].key != "home")
         return 0;
+    // Fork: an app bar opens on its apps, under the Glass Pill Tabs' categories.
+    if (home::barMode()) {
+        const size_t apps = rowIndex(home.rows, "app");
+        return apps < home.rows.size() ? apps : 0;
+    }
     size_t trending = rowIndex(home.rows, "trending");
     return trending < home.rows.size() ? trending : 0;
 }
@@ -300,11 +305,13 @@ void Application::homeFocus(bool jump) {
     auto &home = state_.home;
     if (home.tabs.empty())
         return;
+    // Fork: under an app bar, focus moves at the bar's chosen speed (Instant sets it at once).
+    const int focusMs = home::barMode() ? home::bar().focusMs : ms::focus;
     auto glide = [&](const std::string &name, double to) {
-        if (jump)
+        if (jump || focusMs <= 0)
             motion_.set(name, to);
         else
-            motion_.tween(name, to, ms::focus, easing(ease::out));
+            motion_.tween(name, to, focusMs, easing(ease::out));
     };
     std::string now;
     if (home.navigation) {
@@ -339,10 +346,13 @@ void Application::homeFocus(bool jump) {
         } else {
             std::string name = home::id("rx", home.row);
             bool named = home.tabs[home.tab].key == "apps";
-            double target = kit::geometry::rowScrollTarget(
-                static_cast<int>(home.column), static_cast<int>(row.cards.size()),
-                home::itemWidth(row, named), home::itemGap(row, named));
-            if (jump)
+            double target = row.key == "tabs" ? 0
+                            : home::barRow(row, named)
+                                ? home::barScrollTarget(row, home.column)
+                                : kit::geometry::rowScrollTarget(
+                                      static_cast<int>(home.column), static_cast<int>(row.cards.size()),
+                                      home::itemWidth(row, named), home::itemGap(row, named));
+            if (jump || (home::barMode() && home::bar().focusMs <= 0))
                 motion_.set(name, target);
             else
                 motion_.spring(name, target, springParams(kit::motion::spring::row));
@@ -463,6 +473,17 @@ void Application::homeUpdate() {
         return;
     if (!flow_.entered)
         homeData();
+    // Fork: the app bar's auto-hide ("barHide"): it fades away after the idle time and comes back
+    // with the next key, which only shows it.
+    {
+        const int hideMs = home::barMode() ? home::bar().hideMs : 0;
+        const bool hidden = hideMs > 0 && !home.navigation &&
+                            static_cast<int32_t>(now_ - flow_.lastKeyAt) >= hideMs;
+        if (hidden != barHidden_) {
+            barHidden_ = hidden;
+            motion_.tween("bar:hide", hidden ? 1 : 0, hidden ? 900 : 220, easing(ease::out));
+        }
+    }
     if (flow_.tabPending && due(now_, flow_.commitAt))
         homeSelectTab(home.nav);
     if (flow_.pendingTab >= 0 && due(now_, flow_.swapAt)) {

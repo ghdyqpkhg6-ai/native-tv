@@ -61,6 +61,17 @@ void Application::key(Key key) {
             if (key == Key::Up)
                 home.navigation = true; // nothing to move on: Up reaches the bar
         } else {
+            // Fork: the Vertical Stack's apps run down the screen: Up and Down move along them (Up
+            // from the first still reaches the top bar), and Left and Right do nothing there.
+            if (home::barVertical() && home.row < home.rows.size() && home::barRow(home.rows[home.row])) {
+                if (key == Key::Up && home.column)
+                    key = Key::Left;
+                else if (key == Key::Down)
+                    key = Key::Right;
+                else if (key == Key::Left || key == Key::Right)
+                    key = Key::PageUp; // unused on Home's rows
+            }
+            const size_t columnBefore = home.column, rowBefore = home.row;
             bool grid = home.grid;
             if (key == Key::Up) {
                 if (grid && home.column >= 6)
@@ -81,6 +92,12 @@ void Application::key(Key key) {
             if (key == Key::Right && home.column + 1 < home.rows[home.row].cards.size())
                 ++home.column;
             home.column = clampIndex(home.column, home.rows[home.row].cards.size());
+            // Fork: moving along the Glass Pill Tabs' categories shows that category's apps.
+            if (home.rows[home.row].key == "tabs" && home.row == rowBefore && home.column != columnBefore &&
+                home.column != home.pillTab) {
+                home.pillTab = home.column;
+                rebuildHome();
+            }
             const Card &card = home.rows[home.row].cards[home.column];
             if (key == Key::Ok || key == Key::Red) {
                 if (card.kind == "title") {

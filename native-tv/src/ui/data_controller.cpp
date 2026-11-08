@@ -4,6 +4,63 @@
 #include <algorithm>
 
 namespace nativetv {
+namespace {
+// Fork: the Glass Pill Tabs' categories, from what the TV really has: all the apps, each kind of
+// app the TV has (in the owner's order of kinds), its inputs when it has some, and Settings, which
+// opens Quick settings. The apps row shows the selected one's apps.
+void pillTabsOf(HomeState &home, const Json &catalogue, const Json &discover, const Json &guide) {
+    CardRow all;
+    for (const CardRow &row : home.rows)
+        if (home::isApps(row))
+            all = row;
+    if (all.cards.empty())
+        all = appsRow(catalogue, guide, false);
+    struct Category {
+        std::string key, label;
+    };
+    std::vector<Category> categories = {{"all", "Apps"}};
+    for (const Json &kind : catalogue["kinds"].items()) {
+        const std::string key = kind["key"].string();
+        const bool used = std::any_of(all.cards.begin(), all.cards.end(),
+                                      [&key](const Card &card) { return kindOf(card) == key; });
+        if (used && key != "other")
+            categories.push_back({key, kind["label"].string(key)});
+    }
+    std::vector<Card> inputs;
+    for (const CardRow &row : homeRows("inputs", catalogue, discover, guide))
+        inputs.insert(inputs.end(), row.cards.begin(), row.cards.end());
+    if (!inputs.empty())
+        categories.push_back({"inputs", "Inputs"});
+    categories.push_back({"settings", "Settings"});
+    home.pillTab = std::min(home.pillTab, categories.size() - 1);
+    CardRow tabs;
+    tabs.key = "tabs";
+    tabs.title = "Categories";
+    for (const Category &category : categories) {
+        Card card;
+        card.id = "tab:" + category.key;
+        card.kind = "tab";
+        card.title = category.label;
+        if (category.key == "settings")
+            card.command = navigate("quick");
+        tabs.cards.push_back(card);
+    }
+    const std::string selected = categories[home.pillTab].key;
+    CardRow apps = all;
+    if (selected == "inputs") {
+        apps.cards = inputs;
+    } else if (selected != "all" && selected != "settings") {
+        apps.cards.clear();
+        for (const Card &card : all.cards)
+            if (kindOf(card) == selected)
+                apps.cards.push_back(card);
+    }
+    home.rows = {tabs, apps};
+}
+} // namespace
+void Application::pillTabs(HomeState &home) {
+    pillTabsOf(home, state_.catalogue, state_.discover, state_.guide);
+}
 void Application::rebuildHome() {
     // The cards being moved are the person's own order until it is saved.
     if (state_.home.editing)
@@ -15,11 +72,14 @@ void Application::rebuildHome() {
     if (home.row < home.rows.size() && home.column < home.rows[home.row].cards.size())
         oldId = home.rows[home.row].cards[home.column].id;
     home.rows = homeRows(home.tabs[home.tab].key, state_.catalogue, state_.discover, state_.guide);
-    // Fork: the Ribbon style's Home is its strip of apps alone (home_layout.hpp).
-    if (home::style() == home::Style::Ribbon && home.tabs[home.tab].key == "home")
+    // Fork: the Ribbon style's Home, and an app bar's, is its apps alone (home_layout.hpp).
+    if ((home::style() == home::Style::Ribbon || home::barMode()) && home.tabs[home.tab].key == "home") {
         home.rows.erase(std::remove_if(home.rows.begin(), home.rows.end(),
                                        [](const CardRow &row) { return !home::isApps(row); }),
                         home.rows.end());
+        if (home::bar().design == home::Bar::Pills)
+            pillTabs(home);
+    }
     home.arranging = false; // the rows are the server's again
     home.grid = home.tabs[home.tab].key == "apps" &&
                 state_.catalogue["layout"]["sort"]["app"].string() != "kind";

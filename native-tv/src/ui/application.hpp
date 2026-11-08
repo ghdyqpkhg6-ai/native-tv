@@ -68,6 +68,7 @@ struct HomeState {
     // saves, Up from the first row reaches the button that hides it (`editHide`; Show on Home for
     // an app that was hidden) and Red does the same. Home's row lists the hidden apps, dimmed, last.
     bool editing = false, editHide = false;
+    size_t pillTab = 0; // fork: the Glass Pill Tabs' selected category
     std::vector<Tab> tabs;
     std::vector<CardRow> rows;
     Card hero;                 // the card the hero is showing or about to show
@@ -116,6 +117,8 @@ struct Frame {
     double nowMs;
 };
 void drawHome(kit::Paint paint, const Frame &frame);
+// Fork: Home's app bar in the design the layout chose (home_bar.cpp).
+void drawAppBar(kit::Paint paint, const Frame &frame);
 void drawTopBar(kit::Paint paint, const Frame &frame, int pageTab);
 void drawRecents(kit::Paint paint, const Frame &frame);
 void drawMenu(Scene &scene, const ViewState &state);
@@ -219,7 +222,9 @@ class Application : private ScreenHost {
     // Fork: asks the server to keep Home's live wallpaper playing while Home is on screen, and to
     // stop it when Home leaves (daemon/home_video_player.hpp).
     void homeVideoTick();
+    void pillTabs(HomeState &home); // fork: the Glass Pill Tabs' rows (data_controller.cpp)
     bool videoWanted_ = false, videoSound_ = false;
+    bool barHidden_ = false; // fork: the app bar faded away after its idle time ("bar:hide")
     uint32_t videoAskedAt_ = 0;
     void resolvePictures();
     void buildFrame();

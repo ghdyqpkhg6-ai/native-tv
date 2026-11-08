@@ -23,5 +23,6 @@ void registerScreens(ScreenRegistry &registry) {
     registry.add(makePinScreen);
     registry.add(makeWallpaperScreen);
     registry.add(makeYouTubeScreen);
+    registry.add(makeAppBarScreen);
 }
 } // namespace nativetv

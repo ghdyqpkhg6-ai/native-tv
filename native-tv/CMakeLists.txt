@@ -835,7 +835,7 @@ if(NATIVETV_BUILD_CLIENT)
     src/ui/kit/ambience.cpp
     src/ui/application.cpp src/ui/navigation.cpp src/ui/input.cpp
     src/ui/menu_controller.cpp src/ui/data_controller.cpp
-    src/ui/home_view.cpp src/ui/menu_view.cpp
+    src/ui/home_view.cpp src/ui/home_bar.cpp src/ui/menu_view.cpp
     src/ui/picture_controller.cpp src/ui/recents_controller.cpp src/ui/recents_view.cpp
     src/ui/home_motion.cpp src/ui/screen_registry.cpp src/ui/optimistic.cpp
     src/ui/kit/entry.cpp src/ui/keyboard_pad.cpp src/ui/qr_code.cpp src/ui/setup_screen.cpp
@@ -844,7 +844,7 @@ if(NATIVETV_BUILD_CLIENT)
     src/ui/settings_screen.cpp src/ui/catalog_screen.cpp
     src/ui/kit/overlay.cpp src/ui/quick_screen.cpp src/ui/profiles_screen.cpp
     src/ui/details_screen.cpp src/ui/editor_screen.cpp src/ui/pin_screen.cpp
-    src/ui/wallpaper_screen.cpp src/ui/youtube_screen.cpp)
+    src/ui/wallpaper_screen.cpp src/ui/youtube_screen.cpp src/ui/app_bar_screen.cpp)
   target_link_libraries(nativetv_presentation PUBLIC nativetv_models nativetv_motion nativetv_say qrcodegen)
   target_compile_options(nativetv_presentation PRIVATE -Wall -Wextra -Werror)
   add_library(nativetv_http src/adapters/http_services.cpp src/adapters/legacy_routes.cpp)

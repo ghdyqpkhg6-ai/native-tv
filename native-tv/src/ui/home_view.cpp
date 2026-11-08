@@ -438,8 +438,12 @@ void drawHome(kit::Paint paint, const Frame &frame) {
             kit::aurora(paint, seconds, 1 - wall, home.art.wallTint, stack);
         kit::motes(paint, seconds, 1 - wall);
     }
-    if (!apps && style == home::Style::Ribbon) {
-        rows(paint, frame);
+    if (!apps && (style == home::Style::Ribbon || home::barMode())) {
+        // Fork: an app bar (home_bar.cpp), or the Ribbon style's strip.
+        if (home::barMode())
+            drawAppBar(paint, frame);
+        else
+            rows(paint, frame);
         if (home.rows.empty())
             paint.glyphs.text(scene, {kit::canvas::safeX, 800, 1600, kit::type::body.line},
                               state.catalogue.valid() ? "No apps to show. Open Settings to arrange Home."
