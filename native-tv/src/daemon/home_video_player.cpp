@@ -33,9 +33,18 @@ HomeVideoPlayer::~HomeVideoPlayer() {
     stop(luna_, state_, lock);
 }
 
-Json HomeVideoPlayer::want(const std::string &path, const std::string &windowId) {
+Json HomeVideoPlayer::want(const std::string &path, const std::string &windowId, bool sound) {
     std::unique_lock<std::mutex> lock(state_->mutex);
     state_->lastWant = std::chrono::steady_clock::now();
+    if (sound != state_->sound) {
+        state_->sound = sound;
+        // The playing pipeline follows at once; a new one starts at this volume.
+        if (!state_->mediaId.empty()) {
+            Json volume = withMedia(state_->mediaId);
+            volume.set("volume", Json::numeric(sound ? 100 : 0));
+            luna_.call("com.webos.media/setVolume", volume, ignore, kAppId);
+        }
+    }
     // A new window (the TV app started again) needs a pipeline loaded for it.
     if (path != state_->path || (!path.empty() && windowId != state_->windowId)) {
         stop(luna_, state_, lock);
@@ -96,10 +105,10 @@ void HomeVideoPlayer::start(LunaClient &luna, Logger *logger, const std::shared_
             }
             state->mediaId = mediaId;
             client->call("com.webos.media/play", withMedia(mediaId), ignore, kAppId);
-            // A wallpaper is silent, whatever sound its file carries.
-            Json mute = withMedia(mediaId);
-            mute.set("volume", Json::numeric(0));
-            client->call("com.webos.media/setVolume", mute, ignore, kAppId);
+            // Silent unless Home settings switch the wallpaper's sound on.
+            Json volume = withMedia(mediaId);
+            volume.set("volume", Json::numeric(state->sound ? 100 : 0));
+            client->call("com.webos.media/setVolume", volume, ignore, kAppId);
             // A loop: at its end the file starts again.
             LunaSubscriptionHandlers handlers;
             handlers.message = [weak, generation, client, mediaId](const Json &event) {

@@ -727,8 +727,11 @@ class QuickScreen final : public ScreenView {
                 {"showLgHome", msg("tv.quick.showLgHome", "LG Home tile")},
                 {"picture", msg("tv.quick.picture", "Picture details")}};
             add(Row::Kind::Plain, "appearance", "palette", msg("tv.quick.appearance", "Appearance"), "", true);
-            if (host.view().catalogue["videos"].size() > 0)
+            if (host.view().catalogue["videos"].size() > 0) {
                 add(Row::Kind::Plain, "liveWallpaper", "play", msg("tv.quick.liveWallpaper", "Live wallpaper"));
+                // Off (muted) unless switched on: a wallpaper's own sound is rarely wanted.
+                add(Row::Kind::Switch, "liveSound", "speaker", msg("tv.quick.liveSound", "Live wallpaper sound"));
+            }
             add(Row::Kind::Plain, "motion", "speed", msg("tv.quick.motion", "Animations"));
             if (hasGallery(host)) {
                 add(Row::Kind::Plain, "wallpapers", "palette", msg("tv.quick.wallpapers", "Wallpapers"), "",

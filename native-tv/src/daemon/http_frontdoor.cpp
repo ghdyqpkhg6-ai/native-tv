@@ -17932,6 +17932,7 @@ void HttpFrontDoor::dispatch(HttpExchange &exchange) const {
         }
         const Json body = Json::parse(text);
         std::string path;
+        bool sound = false;
         if (body["play"].boolean()) {
             std::lock_guard<std::mutex> lock(homeConfigMutex_);
             JsonFile file(dataFilePath(dataRoot_, "home.json"), 8 * 1024 * 1024);
@@ -17939,13 +17940,14 @@ void HttpFrontDoor::dispatch(HttpExchange &exchange) const {
             if (stored.found) {
                 const Json layout = service::homeLayout(service::normalizeHomeDocument(stored.value));
                 path = service::homeVideoPath(dataRoot_, layout["liveWallpaper"].string());
+                sound = layout["liveSound"].boolean();
             }
         }
         const std::string windowId = body["windowId"].string();
         const bool validWindow = windowId.size() <= 64 &&
             windowId.find_first_not_of("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-.") ==
                 std::string::npos;
-        const Json result = homeVideo_.want(path, validWindow ? windowId : "");
+        const Json result = homeVideo_.want(path, validWindow ? windowId : "", sound);
         (void)exchange.respond(200,
                                {{"Content-Type", "application/json; charset=utf-8"},
                                 {"Cache-Control", "no-store"},

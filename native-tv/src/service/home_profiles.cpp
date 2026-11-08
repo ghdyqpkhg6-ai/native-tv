@@ -18,7 +18,7 @@ const char *kLayoutKeys[] = {"rows", "order", "sort", "hidden", "kinds", "channe
                              "picture", "appNames", "clockFormat", "showInputs",
                              "showLgHome", "showLive", "colours", "motion",
                              "wallpaper", "wallpaperMode", "wallpaperRotate",
-                             "feedOrder", "feedHidden", "style", "liveWallpaper"};
+                             "feedOrder", "feedHidden", "style", "liveWallpaper", "liveSound"};
 // Fork: the rows of Home's own tab, in the order they are shown, and the ones switched off. The
 // default is v0.118.0's order; a row with nothing in it (no YouTube key, no account) is skipped.
 const char *const kFeedRows[] = {"apps", "trending", "movies", "series", "netflix", "youtube",
@@ -210,6 +210,7 @@ Json defaultDocument() {
     document.set("motion", Json::text("subtle"));
     document.set("style", Json::text("google"));
     document.set("liveWallpaper", Json::text(""));
+    document.set("liveSound", Json::flag(false));
     document.set("wallpaper", Json::text(""));
     document.set("wallpaperMode", Json::text("auto"));
     document.set("wallpaperRotate", Json::text("off"));
@@ -396,6 +397,7 @@ Json normalizeHomeDocument(const Json &raw) {
     result.set("colours", validColours(raw["colours"]));
     result.set("motion", Json::text(oneOf(raw["motion"], kMotionLevels, "subtle")));
     result.set("style", Json::text(oneOf(raw["style"], kStyles, "google")));
+    result.set("liveSound", Json::flag(raw["liveSound"].boolean()));
     result.set("liveWallpaper", Json::text(homeVideoId(raw["liveWallpaper"].string())
                                                ? raw["liveWallpaper"].string() : ""));
     result.set("wallpaper", Json::text(wallpaperChoice(raw["wallpaper"], "")));
@@ -514,7 +516,7 @@ HomeDocumentUpdate updateHomeLayout(const Json &input, const Json &body) {
     const Json availableChannels = body.has("channels") ? body["channels"] : current["channels"];
     proposed.set("channels", strings(ordered(stringList(channelOrder),
         stringList(availableChannels, kMaximumChannels))));
-    const char *booleanKeys[] = {"picture", "appNames", "showInputs", "showLgHome", "showLive"};
+    const char *booleanKeys[] = {"picture", "appNames", "showInputs", "showLgHome", "showLive", "liveSound"};
     for (const char *key : booleanKeys)
         proposed.set(key, body[key].isBoolean() ? body[key] : current[key]);
     proposed.set("clockFormat", Json::text(body["clockFormat"].string() == "12h" ||

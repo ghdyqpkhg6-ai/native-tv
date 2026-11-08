@@ -219,7 +219,7 @@ class Application : private ScreenHost {
     // Fork: asks the server to keep Home's live wallpaper playing while Home is on screen, and to
     // stop it when Home leaves (daemon/home_video_player.hpp).
     void homeVideoTick();
-    bool videoWanted_ = false;
+    bool videoWanted_ = false, videoSound_ = false;
     uint32_t videoAskedAt_ = 0;
     void resolvePictures();
     void buildFrame();

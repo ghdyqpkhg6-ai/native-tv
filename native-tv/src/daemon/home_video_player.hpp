@@ -28,15 +28,16 @@ class HomeVideoPlayer {
     HomeVideoPlayer &operator=(const HomeVideoPlayer &) = delete;
 
     // `path`: the file to keep playing, or empty to stop; `windowId`: the TV app's exported video
-    // window, where the picture shows. Answers {playing, loading, error}.
-    Json want(const std::string &path, const std::string &windowId);
+    // window, where the picture shows; `sound`: the file's own sound heard, else muted (the
+    // default). Answers {playing, loading, error}.
+    Json want(const std::string &path, const std::string &windowId, bool sound = false);
 
   private:
     struct State {
         std::mutex mutex;
         std::string path, windowId, mediaId, error;
         unsigned generation = 0;
-        bool loading = false;
+        bool loading = false, sound = false;
         std::chrono::steady_clock::time_point lastWant;
         std::shared_ptr<LunaSubscription> events;
     };

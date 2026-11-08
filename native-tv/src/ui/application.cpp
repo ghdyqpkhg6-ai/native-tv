@@ -494,9 +494,12 @@ std::string exportedVideoWindow() {
 
 void Application::homeVideoTick() {
     const bool wanted = active_ && state_.screen == Screen::Home && home::liveWallpaper(state_.catalogue).valid();
-    // Asked again every 5 s: the server unloads a video nobody has asked for in 20 s.
-    if (wanted == videoWanted_ && (!wanted || static_cast<int32_t>(now_ - videoAskedAt_) < 5000))
+    // Asked again every 5 s: the server unloads a video nobody has asked for in 20 s. A change of
+    // the sound switch is passed on at once.
+    const bool sound = state_.catalogue["layout"]["liveSound"].boolean();
+    if (wanted == videoWanted_ && (!wanted || (sound == videoSound_ && static_cast<int32_t>(now_ - videoAskedAt_) < 5000)))
         return;
+    videoSound_ = sound;
     Json body = Json::object();
     body.set("play", Json::flag(wanted));
     if (wanted)
