@@ -11,8 +11,9 @@
 namespace nativetv {
 namespace service {
 namespace {
-// The folder on a USB drive whose videos Home may play; the rest of the drive is never read.
-const char *const kUsbFolder = "NativeTV";
+// The folder at the top of a USB drive whose videos Home may play ("NativeTV", "Native TV",
+// "native-tv": case, spaces, '-' and '_' aside); the rest of the drive is never read.
+const char *const kUsbFolder = "nativetv";
 const size_t kMaximumVideos = 64;
 
 std::string videoDirectory(const std::string &dataRoot) {
@@ -88,6 +89,30 @@ std::string unescapeMount(const std::string &field) {
     }
     return result;
 }
+bool usbFolderName(const std::string &name) {
+    std::string folded;
+    for (unsigned char c : name)
+        if (c != ' ' && c != '-' && c != '_')
+            folded.push_back(static_cast<char>(std::tolower(c)));
+    return folded == kUsbFolder;
+}
+// The drive's video folder, or "" when it has none.
+std::string usbFolder(const std::string &mountPoint) {
+    std::string found;
+    if (DIR *dir = opendir(mountPoint.c_str())) {
+        while (const dirent *entry = readdir(dir)) {
+            const std::string name = entry->d_name;
+            struct stat info;
+            if (usbFolderName(name) && stat((mountPoint + "/" + name).c_str(), &info) == 0 &&
+                S_ISDIR(info.st_mode)) {
+                found = mountPoint + "/" + name;
+                break;
+            }
+        }
+        closedir(dir);
+    }
+    return found;
+}
 bool deviceName(const std::string &name) {
     return !name.empty() && name.size() <= 16 &&
            std::all_of(name.begin(), name.end(), [](unsigned char c) { return std::isalnum(c); });
@@ -146,7 +171,9 @@ Json homeVideoList(const std::string &dataRoot) {
         list.add(item);
     }
     for (const auto &mount : usbMounts()) {
-        const std::string folder = mount.second + "/" + kUsbFolder;
+        const std::string folder = usbFolder(mount.second);
+        if (folder.empty())
+            continue;
         for (const std::string &name : videosIn(folder)) {
             if (list.size() >= kMaximumVideos * 2)
                 break;
@@ -168,8 +195,11 @@ std::string homeVideoPath(const std::string &dataRoot, const std::string &id) {
         const size_t slash = id.find('/', 4);
         const std::string device = id.substr(4, slash - 4);
         for (const auto &mount : usbMounts())
-            if (mount.first == device)
-                path = mount.second + "/" + kUsbFolder + "/" + id.substr(slash + 1);
+            if (mount.first == device) {
+                const std::string folder = usbFolder(mount.second);
+                if (!folder.empty())
+                    path = folder + "/" + id.substr(slash + 1);
+            }
     } else {
         path = videoDirectory(dataRoot) + "/" + id;
     }
