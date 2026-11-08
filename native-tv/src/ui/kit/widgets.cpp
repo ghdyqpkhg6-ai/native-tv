@@ -535,10 +535,14 @@ void appPanel(Paint paint, const AppPanel &panel) {
     const float rounding = ribbon ? 0 : radius::md;
     if (!ribbon)
         focusGlow(scene, rest, rounding, panel.color, panel.focus);
-    Node &base = scene.shape(rest, panel.color, rounding);
-    base.gradient = gradient(160, {{panel.color, 0},
-                                   {withByteAlpha(panel.color, 0xe6), .6f},
-                                   {{0, 0, 0, glass ? .18f : .32f}, 1.3f}});
+    // Nearly flat, as an app's own tile is: a touch lighter at the top, a touch darker at the foot.
+    // Glass lets the wallpaper through its colour.
+    const float body = glass ? .5f : 1;
+    Color top = focus::mix(panel.color, white, glass ? .18f : .08f),
+          foot = focus::mix(panel.color, {0, 0, 0, 1}, .14f), middle = panel.color;
+    top.a = foot.a = middle.a = body;
+    Node &base = scene.shape(rest, middle, rounding);
+    base.gradient = gradient(180, {{top, 0}, {middle, .5f}, {foot, 1}});
     if (ribbon) {
         // The strip is lit where focus is and darker either side of it.
         if (amount < 1)
@@ -582,9 +586,9 @@ void appTray(Paint paint, Rect area, PanelLook look, float alpha) {
         Node &band = scene.shape(area, {.05f, .055f, .07f, .92f}, 0);
         band.gradient = gradient(180, {{{.09f, .095f, .11f, .94f}, 0}, {{.03f, .03f, .04f, .97f}, 1}});
     } else if (look == PanelLook::Glass) {
-        Node &tray = scene.shape(area, {1, 1, 1, .08f}, radius::lg);
-        tray.gradient = gradient(180, {{{1, 1, 1, .14f}, 0}, {{1, 1, 1, .05f}, 1}});
-        tray.ring = {1, 0, {1, 1, 1, .24f}};
+        Node &tray = scene.shape(area, {1, 1, 1, .12f}, radius::lg);
+        tray.gradient = gradient(180, {{{1, 1, 1, .22f}, 0}, {{1, 1, 1, .08f}, 1}});
+        tray.ring = {1.5f, 0, {1, 1, 1, .38f}};
         tray.shadow = {0, 12, 40, 0, {0, 0, 0, .28f}};
     } else {
         Node &tray = scene.shape(area, {.07f, .07f, .08f, .78f}, radius::lg);
