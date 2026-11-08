@@ -112,25 +112,25 @@ struct Scaled {
 void fadeShade(Scene &scene, const std::vector<Item> &items) {
     if (!home::bar().fade || items.empty())
         return;
-    const float strength = .45f + .4f * home::bar().opacity;
+    const float strength = .55f + .35f * home::bar().opacity;
     if (home::barVertical()) {
         const float x = items.front().rest.x;
         if (home::bar().alternate) {
-            Node &shade = scene.shape({0, 0, x + items.front().rest.w + 300, kit::canvas::height}, kClear);
+            Node &shade = scene.shape({0, 0, x + items.front().rest.w + 460, kit::canvas::height}, kClear);
             shade.gradient = Gradient::between(270, alpha(kInk, 0), alpha(kInk, strength));
         } else {
-            Node &shade = scene.shape({x - 300, 0, kit::canvas::width - x + 300, kit::canvas::height}, kClear);
+            Node &shade = scene.shape({x - 460, 0, kit::canvas::width - x + 460, kit::canvas::height}, kClear);
             shade.gradient = Gradient::between(90, alpha(kInk, 0), alpha(kInk, strength));
         }
         return;
     }
     const Rect first = items.front().rest;
     if (home::bar().alternate) {
-        const float bottom = first.y + first.h + 260;
+        const float bottom = first.y + first.h + 400;
         Node &shade = scene.shape({0, 0, kit::canvas::width, bottom}, kClear);
         shade.gradient = Gradient::between(0, alpha(kInk, 0), alpha(kInk, strength));
     } else {
-        const float top = first.y - (home::bar().design == Bar::Pills ? 380 : 280);
+        const float top = first.y - (home::bar().design == Bar::Pills ? 520 : 420);
         Node &shade = scene.shape({0, top, kit::canvas::width, kit::canvas::height - top}, kClear);
         shade.gradient = Gradient::between(180, alpha(kInk, 0), alpha(kInk, strength));
     }
@@ -289,11 +289,12 @@ void drawAppBar(kit::Paint paint, const Frame &frame) {
         if (r.x + r.w < -260 || r.x > kit::canvas::width + 260 || r.y + r.h < -260 || r.y > kit::canvas::height + 260)
             continue;
         const float f = item.focus;
+        const float dim = .62f + .38f * f; // apps rest a little faded; focus fades one in as it leaves another
         weight += f;
         centre += f * (r.x + r.w / 2);
         switch (config.design) {
         case Bar::Aurora: {
-            Scaled group(scene, r, 1 + .16f * f, item.enter);
+            Scaled group(scene, r, 1 + .16f * f, item.enter * dim);
             glowAt(scene, r, side * .24f, config.accent, f);
             icon(paint, r, *item.card, side * .24f);
             ringAt(scene, r, side * .24f, alpha(kWhite, .9f * f), 3);
@@ -301,18 +302,18 @@ void drawAppBar(kit::Paint paint, const Frame &frame) {
         }
         case Bar::Horizon:
         case Bar::Fade: {
-            Scaled group(scene, r, 1 + .12f * f, item.enter * (.72f + .28f * f));
+            Scaled group(scene, r, 1 + .12f * f, item.enter * dim);
             glowAt(scene, r, side * .22f, config.accent, f * .6f);
             icon(paint, r, *item.card, side * .22f);
             break;
         }
         case Bar::Cards: {
-            Scaled group(scene, r, 1 + .3f * f, item.enter * (.82f + .18f * f), -16 * f);
+            Scaled group(scene, r, 1 + .3f * f, item.enter * dim, -16 * f);
             glowAt(scene, r, 20, config.accent, f);
             icon(paint, r, *item.card, 20);
             ringAt(scene, r, 20, alpha(config.accent, f), 2.5f);
             // A soft reflection of the focus under the card.
-            Node &reflection = scene.shape({r.x + 8, r.y + r.h + 10, r.w - 16, 46}, kClear, 14);
+            Node &reflection = scene.shape({r.x + 10, r.y + r.h + 8, r.w - 20, 30}, kClear, 12);
             reflection.gradient = Gradient::between(180, alpha(config.accent, .28f * f * std::min(1.0f, config.glow + .2f)),
                                                     alpha(config.accent, 0));
             break;
@@ -320,14 +321,14 @@ void drawAppBar(kit::Paint paint, const Frame &frame) {
         case Bar::Neon: {
             // The edge lights breathe slowly unless the owner switched animations off.
             const float pulse = still ? .5f : .5f + .5f * static_cast<float>(std::sin(seconds * 2.2 + item.index * .7));
-            Scaled group(scene, r, 1 + .12f * f, item.enter);
+            Scaled group(scene, r, 1 + .12f * f, item.enter * dim);
             glowAt(scene, r, 12, config.accent, f * 1.3f);
             icon(paint, r, *item.card, 12);
             ringAt(scene, r, 12, alpha(config.accent, .22f + .14f * pulse + .64f * f), 1.5f + 1.5f * f);
             break;
         }
         case Bar::Circles: {
-            Scaled group(scene, r, 1 + .14f * f, item.enter);
+            Scaled group(scene, r, 1 + .14f * f, item.enter * dim);
             glowAt(scene, r, side / 2, config.accent, f);
             icon(paint, r, *item.card, side / 2);
             ringAt(scene, r, side / 2, alpha(kWhite, .22f), 1);
@@ -335,7 +336,7 @@ void drawAppBar(kit::Paint paint, const Frame &frame) {
             break;
         }
         case Bar::Vertical: {
-            Scaled group(scene, r, 1 + .18f * f, item.enter);
+            Scaled group(scene, r, 1 + .18f * f, item.enter * dim);
             glowAt(scene, r, side * .24f, config.accent, f);
             icon(paint, r, *item.card, side * .24f);
             ringAt(scene, r, side * .24f, alpha(kWhite, .85f * f), 2.5f);
@@ -344,8 +345,8 @@ void drawAppBar(kit::Paint paint, const Frame &frame) {
         case Bar::Halo: {
             // Smaller and fainter with distance from the focus, so the carousel narrows away from it.
             const float distance = std::fabs(static_cast<float>(item.index) - middle);
-            const float scale = std::max(.5f, 1 - .2f * distance) * (1 + .3f * f);
-            const float opacity = std::max(.15f, 1 - .3f * distance);
+            const float scale = std::max(.62f, 1 - .12f * distance) * (1 + .3f * f);
+            const float opacity = std::max(.3f, 1 - .17f * distance);
             Scaled group(scene, r, scale, item.enter * opacity);
             glowAt(scene, r, 26, config.accent, f * 1.2f);
             icon(paint, r, *item.card, 26);
@@ -353,7 +354,7 @@ void drawAppBar(kit::Paint paint, const Frame &frame) {
             break;
         }
         case Bar::Pills: {
-            Scaled group(scene, r, 1 + .14f * f, item.enter);
+            Scaled group(scene, r, 1 + .14f * f, item.enter * dim);
             glowAt(scene, r, side * .22f, config.accent, f);
             icon(paint, r, *item.card, side * .22f);
             ringAt(scene, r, side * .22f, alpha(kWhite, .85f * f), 2.5f);
@@ -402,7 +403,7 @@ void drawAppBar(kit::Paint paint, const Frame &frame) {
             name(paint, item, r.y + r.h * 1.3f + 52);
             break;
         case Bar::Cards:
-            name(paint, item, r.y + r.h * 1.15f + 28);
+            name(paint, item, r.y + r.h * 1.15f + 48);
             break;
         default:
             name(paint, item, r.y + r.h + (config.design == Bar::Aurora || config.design == Bar::Neon ? 34 : 26));

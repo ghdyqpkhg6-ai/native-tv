@@ -157,7 +157,7 @@ inline Color barAccentOf(const std::string &name) {
     return {.66f, .78f, .98f, 1}; // "blue", the kit's accent
 }
 // Each design's own defaults stand where the owner kept "auto": the Neon Edge glows magenta, the
-// Halo Carousel violet, and the Minimal Fade Bar hides after five seconds.
+// Halo Carousel violet, and the Minimal Fade Bar hides after eight seconds.
 inline BarConfig barConfigOf(const Json &layout) {
     BarConfig config;
     config.design = barOf(layout["appBar"].string());
@@ -178,7 +178,7 @@ inline BarConfig barConfigOf(const Json &layout) {
     const std::string speed = layout["barSpeed"].string("smooth");
     config.focusMs = speed == "instant" ? 0 : speed == "fast" ? 110 : speed == "cinematic" ? 520 : 260;
     const std::string hide = layout["barHide"].string("auto");
-    config.hideMs = hide == "auto" ? (config.design == Bar::Fade ? 5000 : 0) : std::atoi(hide.c_str()) * 1000;
+    config.hideMs = hide == "auto" ? (config.design == Bar::Fade ? 8000 : 0) : std::atoi(hide.c_str()) * 1000;
     return config;
 }
 // Home's row of apps drawn as the app bar (never the Apps page's circles, `named`).
@@ -211,7 +211,7 @@ inline float barIcon() {
     default:
         break;
     }
-    return std::round(base * bar().size);
+    return std::round(base * 1.25f * bar().size); // a quarter larger than the reference's proportions: read from the sofa
 }
 inline float barGap() {
     float base = 22;
@@ -267,7 +267,7 @@ inline Rect barItem(const CardRow &row, size_t column) {
     const float count = static_cast<float>(row.cards.size());
     if (barVertical()) {
         const float content = count * pitch - barGap();
-        const float top = std::max(150.0f, (kit::canvas::height - content) / 2);
+        const float top = std::max(176.0f, (kit::canvas::height - content) / 2);
         const float x = bar().alternate ? 64 : kit::canvas::width - 64 - side;
         return {x, top + static_cast<float>(column) * pitch, side, side};
     }
@@ -291,7 +291,7 @@ inline float barScrollTarget(const CardRow &row, size_t column) {
         return -static_cast<float>(column) * pitch;
     const float content = static_cast<float>(count) * pitch - barGap();
     if (barVertical()) {
-        const float room = std::max(0.0f, content - (kit::canvas::height - 300));
+        const float room = std::max(0.0f, content - (kit::canvas::height - 236));
         const float keep = static_cast<float>(std::min<size_t>(column, 3));
         return -std::min(std::max(0.0f, (static_cast<float>(column) - keep) * pitch), room);
     }

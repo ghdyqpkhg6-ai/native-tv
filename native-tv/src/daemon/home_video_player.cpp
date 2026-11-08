@@ -6,7 +6,22 @@ namespace daemon {
 namespace {
 // The pipeline belongs to the TV app, whose window the video plays under.
 const char *const kAppId = "com.tvweb.dashboard";
-const auto kIdle = std::chrono::seconds(20);
+// Home asks every 5 s while the TV app is in front. Quiet longer than this, the player asks the TV
+// what is in front instead: one of LG's own system screens over the app (Settings, the input list,
+// volume, voice, notifications) keeps the video; another app (YouTube, Netflix, Live TV, an input)
+// unloads it, so that app has the decoders. Without an answer for a minute, it unloads anyway.
+const auto kQuiet = std::chrono::seconds(8);
+const auto kUnanswered = std::chrono::seconds(60);
+
+bool systemScreen(const std::string &appId) {
+    if (appId.empty() || appId == kAppId || appId == "com.webos.app.home")
+        return true;
+    for (const char *part : {"settings", "inputcommon", "voice", "notification", "volume", "surfacemanager",
+                             "quickset", "menu", "accessibility", "dialog", "popup"})
+        if (appId.find(part) != std::string::npos)
+            return true;
+    return false;
+}
 const auto kCallTimeout = std::chrono::milliseconds(8000);
 
 Json withMedia(const std::string &mediaId) {
@@ -163,10 +178,36 @@ void HomeVideoPlayer::watch() {
         if (stopping_)
             break;
         std::unique_lock<std::mutex> lock(state_->mutex);
-        if (!state_->path.empty() && std::chrono::steady_clock::now() - state_->lastWant > kIdle) {
+        const auto quiet = std::chrono::steady_clock::now() - state_->lastWant;
+        if (!state_->path.empty() && quiet > kUnanswered) {
             if (logger_)
                 logger_->info("home video: Home stopped asking; unloading");
             stop(luna_, state_, lock);
+            continue;
+        }
+        if (!state_->path.empty() && quiet > kQuiet) {
+            const std::weak_ptr<State> weak = state_;
+            const std::string path = state_->path;
+            LunaClient *client = &luna_;
+            Logger *logger = logger_;
+            luna_.call("com.webos.applicationManager/getForegroundAppInfo", Json::object(),
+                       [weak, path, client, logger](const LunaReply &reply) {
+                           const std::shared_ptr<State> state = weak.lock();
+                           if (!state || reply.timedOut || !reply.error.empty() ||
+                               !reply.response["returnValue"].boolean(false))
+                               return; // no answer: kept until kUnanswered
+                           const std::string front = reply.response["appId"].string();
+                           std::unique_lock<std::mutex> lock(state->mutex);
+                           if (state->path != path)
+                               return;
+                           if (systemScreen(front)) {
+                               state->lastWant = std::chrono::steady_clock::now();
+                               return;
+                           }
+                           if (logger)
+                               logger->info("home video: " + front + " is in front; unloading");
+                           stop(*client, state, lock);
+                       });
             continue;
         }
         // Every 10 s: a pipeline the TV dropped (its resource policy can take the decoders back)

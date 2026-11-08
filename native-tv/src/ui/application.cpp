@@ -493,7 +493,15 @@ std::string exportedVideoWindow() {
 } // namespace
 
 void Application::homeVideoTick() {
-    const bool wanted = active_ && state_.screen == Screen::Home && home::liveWallpaper(state_.catalogue).valid();
+    // Over Home and over every page the TV app opens on top of it (Quick settings, the galleries):
+    // a page left open stops the video only when the app itself goes to the background, so closing
+    // Settings never shows the wallpaper starting again.
+    // In the background the app asks for nothing: the server keeps the video while one of LG's
+    // system screens is over the app, and stops it for another app (daemon/home_video_player.cpp).
+    if (!active_)
+        return;
+    const bool wanted = state_.screen != Screen::Splash && state_.screen != Screen::Setup &&
+                        home::liveWallpaper(state_.catalogue).valid();
     // Asked again every 5 s: the server unloads a video nobody has asked for in 20 s. A change of
     // the sound switch is passed on at once.
     const bool sound = state_.catalogue["layout"]["liveSound"].boolean();
