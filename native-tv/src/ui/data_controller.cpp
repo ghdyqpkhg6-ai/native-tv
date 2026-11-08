@@ -6,8 +6,8 @@
 namespace nativetv {
 namespace {
 // Fork: the Glass Pill Tabs' categories, from what the TV really has: all the apps, each kind of
-// app the TV has (in the owner's order of kinds), its inputs when it has some, and Settings, which
-// opens Quick settings. The apps row shows the selected one's apps.
+// app the TV has (in the owner's order of kinds) and its inputs when it has some. The apps row shows
+// the selected one's apps. Settings is the top bar's gear, not a category.
 void pillTabsOf(HomeState &home, const Json &catalogue, const Json &discover, const Json &guide) {
     CardRow all;
     for (const CardRow &row : home.rows)
@@ -31,7 +31,6 @@ void pillTabsOf(HomeState &home, const Json &catalogue, const Json &discover, co
         inputs.insert(inputs.end(), row.cards.begin(), row.cards.end());
     if (!inputs.empty())
         categories.push_back({"inputs", "Inputs"});
-    categories.push_back({"settings", "Settings"});
     home.pillTab = std::min(home.pillTab, categories.size() - 1);
     CardRow tabs;
     tabs.key = "tabs";
@@ -41,15 +40,13 @@ void pillTabsOf(HomeState &home, const Json &catalogue, const Json &discover, co
         card.id = "tab:" + category.key;
         card.kind = "tab";
         card.title = category.label;
-        if (category.key == "settings")
-            card.command = navigate("quick");
         tabs.cards.push_back(card);
     }
     const std::string selected = categories[home.pillTab].key;
     CardRow apps = all;
     if (selected == "inputs") {
         apps.cards = inputs;
-    } else if (selected != "all" && selected != "settings") {
+    } else if (selected != "all") {
         apps.cards.clear();
         for (const Card &card : all.cards)
             if (kindOf(card) == selected)
