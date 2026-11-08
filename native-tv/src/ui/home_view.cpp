@@ -129,6 +129,12 @@ kit::Hero heroOf(const Frame &frame) {
     return hero;
 }
 
+kit::PanelLook panelLook() {
+    return home::style() == home::Style::Glass    ? kit::PanelLook::Glass
+           : home::style() == home::Style::Ribbon ? kit::PanelLook::Ribbon
+                                                  : kit::PanelLook::Classic;
+}
+
 } // namespace
 
 // pageTab: the bar's tab a registered screen belongs to; -1 keeps the pill off every tab. Home
@@ -204,6 +210,25 @@ void rows(kit::Paint paint, const Frame &frame, float top = 0) {
             slab.shadow = {0, kit::elevation::raised.dy, kit::elevation::raised.blur, 0,
                            {0, 0, 0, .5f}};
         }
+        const bool tiled = home::tiles(row, namedApps);
+        const bool ribbon = tiled && home::style() == home::Style::Ribbon;
+        if (tiled && !row.cards.empty()) {
+            // Fork: the tray the style lays under its tiles (kit::appTray), as wide as the row shows.
+            const Rect first = home::item(row, ri, 0, namedApps);
+            const float enterAlpha = enterOf(motion, home::id("ER", ri)).alpha;
+            if (ribbon) {
+                kit::appTray(paint, {0, first.y, kit::canvas::width, kit::canvas::height - first.y},
+                             kit::PanelLook::Ribbon, enterAlpha);
+            } else {
+                const Rect last = home::item(row, ri, row.cards.size() - 1, namedApps);
+                const float right = std::min(kit::canvas::width - kit::canvas::safeX / 2,
+                                             last.x + last.w + 18 + static_cast<float>(motion.value(home::id("rx", ri))));
+                const float dim = static_cast<float>(motion.value(home::id("rd", ri)));
+                kit::appTray(paint, {first.x - 18, first.y + stack - 18, std::max(right, first.x + 600) - first.x + 18,
+                                     first.h + 36},
+                             panelLook(), enterAlpha * (1 - .5f * dim));
+            }
+        }
         kit::Row label;
         label.index = static_cast<int>(ri);
         label.label = home.editing && ri == home.row && home::isApps(row) ? "Moving apps" : row.title;
@@ -213,7 +238,8 @@ void rows(kit::Paint paint, const Frame &frame, float top = 0) {
         label.enter.alpha *=
             kit::focus::clamp01((kit::canvas::height - 40 - labelY) / 48);
         paint.scene.pushTransform(Transform::translate(0, stack));
-        kit::row(paint, label);
+        if (!ribbon) // the Ribbon's focused tile carries its own name
+            kit::row(paint, label);
         paint.scene.popTransform();
         const float scroll = static_cast<float>(motion.value(home::id("rx", ri)));
         for (size_t ci = 0; ci < row.cards.size(); ++ci) {
@@ -226,7 +252,24 @@ void rows(kit::Paint paint, const Frame &frame, float top = 0) {
             std::string id = home::hit(ri, ci);
             float focus = static_cast<float>(motion.value(home::id("f", ri, ci)));
             kit::Enter enter = enterOf(motion, home::id("EC", ri, ci));
-            if (row.key == "app") {
+            if (tiled) {
+                kit::AppPanel panel;
+                panel.rest = rest;
+                panel.id = id;
+                panel.name = card.title;
+                panel.showName = appNames || ribbon;
+                panel.icon = card.id == "lg-home" ? "home" : "apps";
+                panel.image = card.image;
+                panel.color = appColor(card);
+                panel.look = panelLook();
+                panel.focus = focus;
+                panel.enter = enter;
+                if (card.hidden)
+                    panel.enter.alpha *= .4f;
+                if (home.arranging && ri != home.row)
+                    panel.enter.alpha *= .55f;
+                kit::appPanel(paint, panel);
+            } else if (row.key == "app") {
                 kit::AppCircle circle;
                 circle.rest = rest;
                 circle.id = id;
@@ -374,13 +417,33 @@ void drawHome(kit::Paint paint, const Frame &frame) {
     const bool apps = home.tabs[home.tab].key == "apps";
     const double seconds = frame.nowMs / 1000.0;
     const float stack = static_cast<float>(motion.value("sy"));
-    wallpaper(scene, home, kit::wallpaperDrift(seconds, stack));
+    const home::Style style = home::style();
+    const bool hasWallpaper = !home.wallpaperShown.empty() || !home.wallpaperTarget.empty();
     float wall = static_cast<float>(motion.value("wall"));
-    kit::ambientWall(paint, 1 - wall, home.art.wallTint);
-    // The aurora lives on the wall and the wallpaper, under any art: a film's picture covers it.
-    kit::aurora(paint, seconds, 1 - wall, home.art.wallTint, stack);
-    kit::motes(paint, seconds, 1 - wall);
-    if (apps) {
+    // Fork: each style's backdrop (home_layout.hpp). Classic has none of the wallpaper or the aurora:
+    // only its glow. Liquid Glass keeps the wallpaper, or its own gradient without one. Ribbon shows
+    // the wallpaper whole, with no hero over it.
+    if (style == home::Style::Classic) {
+        kit::classicWall(paint, home.art.wallTint);
+    } else {
+        if (style == home::Style::Glass && !hasWallpaper)
+            kit::glassWall(paint);
+        wallpaper(scene, home, kit::wallpaperDrift(seconds, stack));
+        if (style != home::Style::Ribbon || !hasWallpaper)
+            kit::ambientWall(paint, (1 - wall) * (style == home::Style::Glass ? .5f : 1), home.art.wallTint);
+        // The aurora lives on the wall and the wallpaper, under any art: a film's picture covers it.
+        if (style != home::Style::Ribbon)
+            kit::aurora(paint, seconds, 1 - wall, home.art.wallTint, stack);
+        kit::motes(paint, seconds, 1 - wall);
+    }
+    if (!apps && style == home::Style::Ribbon) {
+        rows(paint, frame);
+        if (home.rows.empty())
+            paint.glyphs.text(scene, {kit::canvas::safeX, 800, 1600, kit::type::body.line},
+                              state.catalogue.valid() ? "No apps to show. Open Settings to arrange Home."
+                                                      : "Loading Home…",
+                              kit::type::body, kit::color::onSurface2);
+    } else if (apps) {
         kit::Hero none = heroOf(frame);
         none.wallAlpha = wall;
         kit::heroWall(paint, none);

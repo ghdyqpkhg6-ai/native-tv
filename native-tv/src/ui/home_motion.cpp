@@ -111,7 +111,7 @@ HeroText linesOf(const ViewState &state, const Card &card) {
 // How many of a row's items start on the screen; the ones past it have no entrance, they are
 // scrolled to.
 size_t shownOf(const CardRow &row, bool named) {
-    float pitch = home::itemWidth(row) + home::itemGap(row, named);
+    float pitch = home::itemWidth(row, named) + home::itemGap(row, named);
     size_t fit = static_cast<size_t>((kit::canvas::width - kit::canvas::safeX) / pitch) + 1;
     return std::min(row.cards.size(), fit);
 }
@@ -341,7 +341,7 @@ void Application::homeFocus(bool jump) {
             bool named = home.tabs[home.tab].key == "apps";
             double target = kit::geometry::rowScrollTarget(
                 static_cast<int>(home.column), static_cast<int>(row.cards.size()),
-                home::itemWidth(row), home::itemGap(row, named));
+                home::itemWidth(row, named), home::itemGap(row, named));
             if (jump)
                 motion_.set(name, target);
             else

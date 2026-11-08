@@ -167,6 +167,30 @@ struct AppCircle {
 };
 void appCircle(Paint paint, const AppCircle &circle);
 
+// Fork: an app as a landscape tile, for Home's styles (home_layout.hpp): its colour, its artwork
+// centred, and its name under it on focus (Classic, Liquid Glass) or over it (Ribbon). Glass lays
+// a sheen and a light rim over the colour; a Ribbon tile has square corners and rises on focus.
+enum class PanelLook { Classic, Glass, Ribbon };
+struct AppPanel {
+    Rect rest;
+    std::string id, name;
+    std::string icon;  // glyph when there is no artwork
+    std::string image; // the app's own artwork
+    Color color = color::surface3;
+    PanelLook look = PanelLook::Classic;
+    bool showName = true;
+    float focus = 0;
+    Enter enter;
+};
+void appPanel(Paint paint, const AppPanel &panel);
+// Fork: what Home's styles lay behind their apps row: Classic's dark tray, Liquid Glass's frosted
+// one with a light rim, or Ribbon's band along the screen's foot.
+void appTray(Paint paint, Rect area, PanelLook look, float alpha);
+// Fork: Classic's backdrop: near-black with a slow glow of the focused item's colour.
+void classicWall(Paint paint, Color tint);
+// Fork: Liquid Glass's backdrop where there is no wallpaper: violet into teal.
+void glassWall(Paint paint);
+
 struct InputTile {
     Rect rest;
     std::string id, name, sub;

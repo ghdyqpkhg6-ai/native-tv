@@ -516,6 +516,102 @@ void appCircle(Paint paint, const AppCircle &circle) {
     }
     hit(scene, look.rect, circle.id);
 }
+void appPanel(Paint paint, const AppPanel &panel) {
+    const bool ribbon = panel.look == PanelLook::Ribbon, glass = panel.look == PanelLook::Glass;
+    const float amount = focus::clamp01(panel.focus);
+    // A Ribbon tile grows up out of the strip instead of zooming, so its neighbours stay flush.
+    Rect rest = panel.rest;
+    if (ribbon) {
+        const float rise = 28 * amount;
+        rest.y -= rise;
+        rest.h += rise;
+    }
+    focus::Look look = focus::lookAt(rest, ribbon ? 1.0f : zoomTarget(motion::scale::card), panel.focus);
+    if (invisible(panel.enter) || offCanvas(look.rect))
+        return;
+    Scene &scene = paint.scene;
+    Transform scale = focus::transformAt(rest, look.scale);
+    Group group(scene, panel.enter, look.scale != 1 ? &scale : nullptr);
+    const float rounding = ribbon ? 0 : radius::md;
+    if (!ribbon)
+        focusGlow(scene, rest, rounding, panel.color, panel.focus);
+    Node &base = scene.shape(rest, panel.color, rounding);
+    base.gradient = gradient(160, {{panel.color, 0},
+                                   {withByteAlpha(panel.color, 0xe6), .6f},
+                                   {{0, 0, 0, glass ? .18f : .32f}, 1.3f}});
+    if (ribbon) {
+        // The strip is lit where focus is and darker either side of it.
+        if (amount < 1)
+            scene.shape(rest, {0, 0, 0, .28f * (1 - amount)}, 0);
+    } else {
+        applyFocus(base, look);
+        if (look.ringAlpha <= 0)
+            base.ring = {1, 0, glass ? Color{1, 1, 1, .22f} : Color{1, 1, 1, .06f}};
+    }
+    if (glass) {
+        // The sheen: light across the top fading out by the middle.
+        Node &sheen = scene.shape(rest, clear, rounding);
+        sheen.gradient = gradient(180, {{{1, 1, 1, .20f}, 0}, {{1, 1, 1, .04f}, .45f}, {{1, 1, 1, 0}, .7f}});
+    }
+    const float side = std::min(rest.h * .58f, rest.w * .46f);
+    const Rect art = {rest.x + (rest.w - side) / 2, rest.y + (rest.h - side) / 2 - (ribbon ? 10 * amount : 0),
+                      side, side};
+    if (!panel.image.empty())
+        scene.picture(art, 0, side * .24f).value = panel.image;
+    else
+        paint.glyphs.icon(scene, centreOf(art, side * .6f), panel.icon, white);
+    if (panel.showName && amount > .004f && !panel.name.empty()) {
+        const float width = std::max(rest.w + 120, 360.0f), cx = rest.x + rest.w / 2;
+        if (ribbon)
+            text(paint, {cx - width / 2, rest.y - type::title.line - 10 - focus::labelRise(amount), width,
+                         type::title.line},
+                 panel.name, type::title, faded(white, amount), Node::Align::Center);
+        else
+            text(paint, {cx - width / 2, rest.y + rest.h + 14 + focus::labelRise(amount), width,
+                         type::labelM.line},
+                 panel.name, type::labelM, faded(color::onSurface, amount), Node::Align::Center);
+    }
+    hit(scene, look.rect, panel.id);
+}
+void appTray(Paint paint, Rect area, PanelLook look, float alpha) {
+    if (alpha <= .002f)
+        return;
+    Scene &scene = paint.scene;
+    scene.pushOpacity(alpha);
+    if (look == PanelLook::Ribbon) {
+        Node &band = scene.shape(area, {.05f, .055f, .07f, .92f}, 0);
+        band.gradient = gradient(180, {{{.09f, .095f, .11f, .94f}, 0}, {{.03f, .03f, .04f, .97f}, 1}});
+    } else if (look == PanelLook::Glass) {
+        Node &tray = scene.shape(area, {1, 1, 1, .08f}, radius::lg);
+        tray.gradient = gradient(180, {{{1, 1, 1, .14f}, 0}, {{1, 1, 1, .05f}, 1}});
+        tray.ring = {1, 0, {1, 1, 1, .24f}};
+        tray.shadow = {0, 12, 40, 0, {0, 0, 0, .28f}};
+    } else {
+        Node &tray = scene.shape(area, {.07f, .07f, .08f, .78f}, radius::lg);
+        tray.ring = {1, 0, {1, 1, 1, .08f}};
+    }
+    scene.popOpacity();
+}
+void classicWall(Paint paint, Color tint) {
+    Scene &scene = paint.scene;
+    const Rect screen = {0, 0, canvas::width, canvas::height};
+    scene.shape(screen, {.02f, .02f, .025f, 1}, 0);
+    // A large soft disc of the tint, left of centre and above the rows, like a lamp behind them.
+    Color glow = focus::mix(tint, {0, 0, 0, 1}, .1f);
+    glow.a = .55f;
+    Node &disc = scene.shape({360, 160, 520, 520}, clear, 260);
+    disc.shadow = {0, 0, 520, 120, glow};
+    Node &fade = scene.shape(screen, clear);
+    fade.gradient = gradient(180, {{{0, 0, 0, 0}, .45f}, {{0, 0, 0, .75f}, 1}});
+}
+void glassWall(Paint paint) {
+    Scene &scene = paint.scene;
+    const Rect screen = {0, 0, canvas::width, canvas::height};
+    Node &base = scene.shape(screen, {.12f, .1f, .3f, 1}, 0);
+    base.gradient = gradient(120, {{{.16f, .11f, .38f, 1}, 0}, {{.1f, .16f, .34f, 1}, .5f}, {{.03f, .3f, .36f, 1}, 1}});
+    Node &warm = scene.shape(screen, clear);
+    warm.gradient = gradient(20, {{{.55f, .18f, .45f, .35f}, 0}, {{.55f, .18f, .45f, 0}, .6f}});
+}
 void inputTile(Paint paint, const InputTile &tile) {
     focus::Look look = focus::lookAt(tile.rest, zoomTarget(motion::scale::input), tile.focus);
     if (invisible(tile.enter) || offCanvas(look.rect))

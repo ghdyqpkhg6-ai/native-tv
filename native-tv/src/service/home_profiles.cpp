@@ -17,7 +17,7 @@ const char *kLayoutKeys[] = {"rows", "order", "sort", "hidden", "kinds", "channe
                              "picture", "appNames", "clockFormat", "showInputs",
                              "showLgHome", "showLive", "colours", "motion",
                              "wallpaper", "wallpaperMode", "wallpaperRotate",
-                             "feedOrder", "feedHidden"};
+                             "feedOrder", "feedHidden", "style"};
 // Fork: the rows of Home's own tab, in the order they are shown, and the ones switched off. The
 // default is v0.118.0's order; a row with nothing in it (no YouTube key, no account) is skipped.
 const char *const kFeedRows[] = {"apps", "trending", "movies", "series", "netflix", "youtube",
@@ -28,6 +28,8 @@ std::vector<std::string> feedKeys() {
 // Fork: Home's animation level, and the wallpaper chosen from the gallery with how it is shown
 // and how often it changes. "auto" fills a landscape picture and blurs the sides of a portrait.
 const char *const kMotionLevels[] = {"off", "subtle", "full"};
+// Fork: Home's look, chosen in Home settings > Appearance: "google" is v0.118.0's.
+const char *const kStyles[] = {"google", "classic", "glass", "ribbon"};
 const char *const kWallpaperModes[] = {"auto", "fit", "fill", "blur"};
 // "daylight": the gallery's bright pictures by day, warm or dim ones in the evening, dark ones at night.
 const char *const kRotateMinutes[] = {"off", "5", "15", "30", "60", "daylight"};
@@ -205,6 +207,7 @@ Json defaultDocument() {
     document.set("openOnPowerOn", Json::flag(false));
     document.set("colours", Json::parse("null"));
     document.set("motion", Json::text("subtle"));
+    document.set("style", Json::text("google"));
     document.set("wallpaper", Json::text(""));
     document.set("wallpaperMode", Json::text("auto"));
     document.set("wallpaperRotate", Json::text("off"));
@@ -390,6 +393,7 @@ Json normalizeHomeDocument(const Json &raw) {
     result.set("openOnPowerOn", Json::flag(raw["openOnPowerOn"].boolean()));
     result.set("colours", validColours(raw["colours"]));
     result.set("motion", Json::text(oneOf(raw["motion"], kMotionLevels, "subtle")));
+    result.set("style", Json::text(oneOf(raw["style"], kStyles, "google")));
     result.set("wallpaper", Json::text(wallpaperChoice(raw["wallpaper"], "")));
     result.set("wallpaperMode", Json::text(oneOf(raw["wallpaperMode"], kWallpaperModes, "auto")));
     result.set("wallpaperRotate", Json::text(oneOf(raw["wallpaperRotate"], kRotateMinutes, "off")));
@@ -515,6 +519,7 @@ HomeDocumentUpdate updateHomeLayout(const Json &input, const Json &body) {
     proposed.set("colours", body.has("colours") ? body["colours"] : current["colours"]);
     proposed.set("motion", Json::text(oneOf(body["motion"], kMotionLevels,
                                             current["motion"].string())));
+    proposed.set("style", Json::text(oneOf(body["style"], kStyles, current["style"].string("google"))));
     proposed.set("wallpaper", Json::text(wallpaperChoice(body["wallpaper"],
                                                          current["wallpaper"].string())));
     proposed.set("wallpaperMode", Json::text(oneOf(body["wallpaperMode"], kWallpaperModes,

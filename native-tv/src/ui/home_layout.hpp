@@ -48,11 +48,45 @@ inline unsigned hashOf(const std::string &text) {
 inline bool isApps(const CardRow &row) {
     return row.key == "app";
 }
-inline float itemWidth(const CardRow &row) {
+
+// Fork: Home's style, chosen in Home settings > Appearance ("style" in the Home layout). Google is
+// v0.118.0's look; Classic and Liquid Glass draw Home's apps as landscape tiles on a tray, and
+// Ribbon as one strip of tiles along the bottom over the wallpaper, Home's only row. The Apps page
+// keeps its circles in every style. Set once per frame by the application, before Home's layout
+// and motion read it.
+enum class Style { Google, Classic, Glass, Ribbon };
+inline Style &styleSlot() {
+    static Style current = Style::Google;
+    return current;
+}
+inline Style style() {
+    return styleSlot();
+}
+inline void setStyle(Style value) {
+    styleSlot() = value;
+}
+inline Style styleOf(const std::string &name) {
+    return name == "classic" ? Style::Classic
+           : name == "glass" ? Style::Glass
+           : name == "ribbon" ? Style::Ribbon
+                              : Style::Google;
+}
+// Home's row of apps drawn as tiles: every style but Google's, never the Apps page (`named`).
+inline bool tiles(const CardRow &row, bool named = false) {
+    return isApps(row) && !named && style() != Style::Google;
+}
+// The Ribbon strip: full height to the screen's foot, tiles edge to edge.
+constexpr float kRibbonTop = 860, kRibbonTileW = 250, kRibbonTileH = 220;
+
+inline float itemWidth(const CardRow &row, bool named = false) {
+    if (tiles(row, named))
+        return style() == Style::Ribbon ? kRibbonTileW : kit::layout::cardW;
     return isApps(row) ? kit::layout::appD : kit::layout::cardW;
 }
 // `named`: a row of apps that carries every name (the Apps page), so the circles stand wider.
 inline float itemGap(const CardRow &row, bool named = false) {
+    if (tiles(row, named))
+        return style() == Style::Ribbon ? 0 : kit::layout::cardGap;
     return named && isApps(row) ? kit::layout::appGapNamed : kit::layout::cardGap;
 }
 inline std::string id(const char *name, size_t row, size_t column) {
@@ -67,10 +101,12 @@ inline std::string hit(size_t row, size_t column) {
 }
 // Row n's items on the shared canvas, before the row's own scroll and the stack's offset.
 inline Rect item(const CardRow &row, size_t rowIndex, size_t column, bool named = false) {
-    float width = itemWidth(row), gap = itemGap(row, named);
-    return {kit::canvas::safeX + static_cast<float>(column) * (width + gap),
-            kit::geometry::rowItemsY(static_cast<int>(rowIndex)), width,
-            isApps(row) ? kit::layout::appD : kit::layout::cardH};
+    float width = itemWidth(row, named), gap = itemGap(row, named);
+    float x = kit::canvas::safeX + static_cast<float>(column) * (width + gap);
+    if (tiles(row, named) && style() == Style::Ribbon)
+        return {x, kRibbonTop, width, kRibbonTileH};
+    return {x, kit::geometry::rowItemsY(static_cast<int>(rowIndex)), width,
+            isApps(row) && !tiles(row, named) ? kit::layout::appD : kit::layout::cardH};
 }
 // The apps grid's scroll target while focus is on `column`: three rows fit under the page
 // title, so the grid follows once focus passes the second row, and stops when the last row is

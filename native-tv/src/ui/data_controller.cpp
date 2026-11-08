@@ -1,5 +1,6 @@
 #include "ui/application.hpp"
 #include "ui/controller_helpers.hpp"
+#include "ui/home_layout.hpp"
 #include <algorithm>
 
 namespace nativetv {
@@ -14,6 +15,11 @@ void Application::rebuildHome() {
     if (home.row < home.rows.size() && home.column < home.rows[home.row].cards.size())
         oldId = home.rows[home.row].cards[home.column].id;
     home.rows = homeRows(home.tabs[home.tab].key, state_.catalogue, state_.discover, state_.guide);
+    // Fork: the Ribbon style's Home is its strip of apps alone (home_layout.hpp).
+    if (home::style() == home::Style::Ribbon && home.tabs[home.tab].key == "home")
+        home.rows.erase(std::remove_if(home.rows.begin(), home.rows.end(),
+                                       [](const CardRow &row) { return !home::isApps(row); }),
+                        home.rows.end());
     home.arranging = false; // the rows are the server's again
     home.grid = home.tabs[home.tab].key == "apps" &&
                 state_.catalogue["layout"]["sort"]["app"].string() != "kind";

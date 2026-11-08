@@ -38,11 +38,13 @@ constexpr kit::SpringTuning kSlide = {420, 1};
 constexpr const char *kStats = "quick:stats", *kNow = "quick:now";
 constexpr const char *kStatsMemory = "quick.stats", *kNowMemory = "quick.now";
 
-enum class Level { Main, Picture, Sound, Input, Sleep, Layout, Rows };
+enum class Level { Main, Picture, Sound, Input, Sleep, Layout, Rows, Appearance };
 const char *levelName(Level level) {
     switch (level) {
     case Level::Rows:
         return "rows";
+    case Level::Appearance:
+        return "appearance";
     case Level::Picture:
         return "picture";
     case Level::Sound:
@@ -105,6 +107,26 @@ std::string feedRowTitle(const std::string &key) {
     if (key == "youtube")
         return msg("tv.quick.rowYoutube", "Trending on YouTube");
     return msg("tv.quick.rowSubs", "Latest from your subscriptions");
+}
+// Fork: Home's styles as Home settings > Appearance lists them (home_layout.hpp).
+const char *const kStyles[] = {"google", "classic", "glass", "ribbon"};
+std::string styleTitle(const std::string &value) {
+    if (value == "classic")
+        return msg("tv.quick.styleClassic", "Classic");
+    if (value == "glass")
+        return msg("tv.quick.styleGlass", "Liquid Glass");
+    if (value == "ribbon")
+        return msg("tv.quick.styleRibbon", "Ribbon");
+    return msg("tv.quick.styleGoogle", "Google TV");
+}
+std::string styleHint(const std::string &value) {
+    if (value == "classic")
+        return msg("tv.quick.styleClassicHint", "Dark, with app tiles on a tray");
+    if (value == "glass")
+        return msg("tv.quick.styleGlassHint", "Frosted tiles over the wallpaper");
+    if (value == "ribbon")
+        return msg("tv.quick.styleRibbonHint", "The wallpaper with a strip of apps");
+    return msg("tv.quick.styleGoogleHint", "Highlights and rows");
 }
 std::string feedRowIcon(const std::string &key) {
     return key == "apps" ? "apps" : key == "youtube" || key == "subs" ? "play" : "movie";
@@ -442,6 +464,10 @@ class QuickScreen final : public ScreenView {
                 return value;
         return choice.fallback;
     }
+    // Fork: Home's style as shown: a choice still being saved already counts.
+    std::string styleValue(ScreenHost &host) {
+        return host.optimistic().text("layout.style", host.view().catalogue["layout"]["style"].string("google"));
+    }
     std::string layoutText(ScreenHost &host, const LayoutChoice &choice) {
         return host.optimistic().text(std::string("layout.") + choice.key, layoutServerText(host, choice));
     }
@@ -538,6 +564,8 @@ class QuickScreen final : public ScreenView {
             return msg("tv.quick.settings", "Home settings");
         case Level::Rows:
             return msg("tv.quick.rows", "Home rows");
+        case Level::Appearance:
+            return msg("tv.quick.appearance", "Appearance");
         default:
             return msg("tv.quick.title", "Quick settings");
         }
@@ -567,6 +595,8 @@ class QuickScreen final : public ScreenView {
     std::string trail(ScreenHost &host, const Row &row) {
         if (row.kind != Row::Kind::Plain)
             return row.trail;
+        if (level_ == Level::Layout && row.id == "appearance")
+            return styleTitle(styleValue(host));
         if (level_ == Level::Layout)
             if (const LayoutChoice *choice = layoutChoice(row.id))
                 return choiceLabel(row.id, layoutText(host, *choice));
@@ -609,6 +639,8 @@ class QuickScreen final : public ScreenView {
             return row.raw == soundValue(host);
         if (level_ == Level::Sleep)
             return row.raw == sleepValue(host);
+        if (level_ == Level::Appearance)
+            return row.raw == styleValue(host);
         return row.on;
     }
     void rebuild(ScreenHost &host, bool jump) {
@@ -662,6 +694,10 @@ class QuickScreen final : public ScreenView {
         } else if (level_ == Level::Sleep) {
             for (const char *value : kSleep)
                 add(Row::Kind::Choice, value, "timer", sleepLabel(value), value);
+        } else if (level_ == Level::Appearance) {
+            for (const char *value : kStyles)
+                add(Row::Kind::Choice, value, "palette", styleTitle(value), value, false, false, false,
+                    styleHint(value));
         } else {
             static const std::vector<std::pair<std::string, std::string>> titles = {
                 {"clockFormat", msg("tv.quick.clock24", "24-hour clock")},
@@ -670,6 +706,7 @@ class QuickScreen final : public ScreenView {
                 {"showInputs", msg("tv.quick.showInputs", "Inputs tab")},
                 {"showLgHome", msg("tv.quick.showLgHome", "LG Home tile")},
                 {"picture", msg("tv.quick.picture", "Picture details")}};
+            add(Row::Kind::Plain, "appearance", "palette", msg("tv.quick.appearance", "Appearance"), "", true);
             add(Row::Kind::Plain, "motion", "speed", msg("tv.quick.motion", "Animations"));
             if (hasGallery(host)) {
                 add(Row::Kind::Plain, "wallpapers", "palette", msg("tv.quick.wallpapers", "Wallpapers"), "",
@@ -1039,6 +1076,18 @@ class QuickScreen final : public ScreenView {
         }
         if (level_ == Level::Layout && row.id == "feedRows") {
             openLevel(host, Level::Rows);
+            return;
+        }
+        if (level_ == Level::Layout && row.id == "appearance") {
+            openLevel(host, Level::Appearance);
+            return;
+        }
+        if (level_ == Level::Appearance) {
+            // One press: the style is saved and Home shows it straight away.
+            host.optimistic().set("layout.style", Json::text(row.raw),
+                                  Json::text(host.view().catalogue["layout"]["style"].string("google")),
+                                  layoutWrite("style"));
+            close(host, returnRoute(host.cameFrom()));
             return;
         }
         if (level_ == Level::Layout && row.id == "youtubeAccount") {

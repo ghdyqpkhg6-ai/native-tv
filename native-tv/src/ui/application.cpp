@@ -442,6 +442,14 @@ void Application::resolvePictures() {
     }
 }
 void Application::buildFrame() {
+    // Fork: Home's style (Home settings > Appearance), a choice still being saved already counts.
+    // Home's rows depend on it (Ribbon keeps only the apps), so a change rebuilds them.
+    const home::Style style =
+        home::styleOf(optimistic_.text("layout.style", state_.catalogue["layout"]["style"].string()));
+    if (style != home::style()) {
+        home::setStyle(style);
+        rebuildHome();
+    }
     scene_.reset();
     kit::setMotionLevel(motionLevel());
     kit::Paint paint{scene_, *glyphs_};
