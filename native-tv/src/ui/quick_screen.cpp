@@ -455,6 +455,34 @@ class QuickScreen final : public ScreenView {
                 return value;
         return choice.fallback;
     }
+    // Fork: Home's live wallpaper: Off, then the videos on the TV (the catalogue's "videos"), in
+    // turn. A choice still being saved already counts.
+    std::string liveValue(ScreenHost &host) {
+        return host.optimistic().text("layout.liveWallpaper",
+                                      host.view().catalogue["layout"]["liveWallpaper"].string());
+    }
+    std::string liveTitle(ScreenHost &host, const std::string &id) {
+        for (const Json &video : host.view().catalogue["videos"].items())
+            if (video["id"].string() == id)
+                return video["title"].string(id);
+        return msg("tv.quick.off", "Off");
+    }
+    void stepLive(ScreenHost &host, int direction) {
+        std::vector<std::string> values = {""};
+        for (const Json &video : host.view().catalogue["videos"].items())
+            values.push_back(video["id"].string());
+        const std::string current = liveValue(host);
+        size_t at = 0;
+        for (size_t i = 0; i < values.size(); ++i)
+            if (values[i] == current)
+                at = i;
+        const size_t count = values.size();
+        const size_t next = direction > 0 ? (at + 1) % count : (at + count - 1) % count;
+        host.optimistic().set("layout.liveWallpaper", Json::text(values[next]),
+                              Json::text(host.view().catalogue["layout"]["liveWallpaper"].string()),
+                              layoutWrite("liveWallpaper"));
+        host.invalidate();
+    }
     // Fork: Home's style as shown: a choice still being saved already counts.
     std::string styleValue(ScreenHost &host) {
         return host.optimistic().text("layout.style", host.view().catalogue["layout"]["style"].string("google"));
@@ -588,6 +616,8 @@ class QuickScreen final : public ScreenView {
             return row.trail;
         if (level_ == Level::Layout && row.id == "appearance")
             return styleTitle(styleValue(host));
+        if (level_ == Level::Layout && row.id == "liveWallpaper")
+            return liveTitle(host, liveValue(host));
         if (level_ == Level::Layout)
             if (const LayoutChoice *choice = layoutChoice(row.id))
                 return choiceLabel(row.id, layoutText(host, *choice));
@@ -697,6 +727,8 @@ class QuickScreen final : public ScreenView {
                 {"showLgHome", msg("tv.quick.showLgHome", "LG Home tile")},
                 {"picture", msg("tv.quick.picture", "Picture details")}};
             add(Row::Kind::Plain, "appearance", "palette", msg("tv.quick.appearance", "Appearance"), "", true);
+            if (host.view().catalogue["videos"].size() > 0)
+                add(Row::Kind::Plain, "liveWallpaper", "play", msg("tv.quick.liveWallpaper", "Live wallpaper"));
             add(Row::Kind::Plain, "motion", "speed", msg("tv.quick.motion", "Animations"));
             if (hasGallery(host)) {
                 add(Row::Kind::Plain, "wallpapers", "palette", msg("tv.quick.wallpapers", "Wallpapers"), "",
@@ -817,7 +849,8 @@ class QuickScreen final : public ScreenView {
             item.value = trail(host, row);
             // The rows Left and Right step through the values of show a chevron on each side.
             item.stepper = (level_ == Level::Main && steps(row.id) && loaded_ && !dim) ||
-                           (level_ == Level::Layout && layoutChoice(row.id) != nullptr);
+                           (level_ == Level::Layout &&
+                            (layoutChoice(row.id) != nullptr || row.id == "liveWallpaper"));
         }
         kit::settingsRow(paint, item);
         float right = rest.x + rest.w - layout::srowPadRight;
@@ -929,6 +962,10 @@ class QuickScreen final : public ScreenView {
             return;
         }
         if (level_ != Level::Main) {
+            if (level_ == Level::Layout && row.id == "liveWallpaper") {
+                stepLive(host, direction);
+                return;
+            }
             if (level_ == Level::Layout)
                 if (const LayoutChoice *choice = layoutChoice(row.id)) {
                     stepChoice(host, *choice, direction);
@@ -1070,6 +1107,10 @@ class QuickScreen final : public ScreenView {
         }
         if (level_ == Level::Layout && row.id == "appearance") {
             openLevel(host, Level::Appearance);
+            return;
+        }
+        if (level_ == Level::Layout && row.id == "liveWallpaper") {
+            stepLive(host, 1);
             return;
         }
         if (level_ == Level::Appearance) {

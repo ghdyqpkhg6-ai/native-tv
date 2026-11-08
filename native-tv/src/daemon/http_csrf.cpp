@@ -47,6 +47,7 @@ const GuardedRoute kGuardedRoutes[] = {
     {"/api/youtube/account/link", ContentTypeRule::JsonPrefix},
     {"/api/youtube/account/unlink", ContentTypeRule::JsonPrefix},
     {"/api/youtube/account/use", ContentTypeRule::JsonPrefix},
+    {"/api/home/video", ContentTypeRule::JsonPrefix},
     {"/api/quickaccess", ContentTypeRule::JsonPrefix},
     {"/api/remotekeys", ContentTypeRule::JsonPrefix},
     {"/api/preload/toggle", ContentTypeRule::JsonPrefix},

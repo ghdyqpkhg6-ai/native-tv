@@ -71,6 +71,17 @@ inline Style styleOf(const std::string &name) {
            : name == "ribbon" ? Style::Ribbon
                               : Style::Google;
 }
+// Fork: the active profile's live wallpaper ("liveWallpaper" in the Home layout) as the catalogue
+// lists it in "videos" ({id, title, credit}); invalid Json when there is none or its file is gone.
+inline Json liveWallpaper(const Json &catalogue) {
+    const std::string id = catalogue["layout"]["liveWallpaper"].string();
+    if (id.empty())
+        return Json();
+    for (const Json &video : catalogue["videos"].items())
+        if (video["id"].string() == id)
+            return video;
+    return Json();
+}
 // Home's row of apps drawn as tiles: every style but Google's, never the Apps page (`named`).
 inline bool tiles(const CardRow &row, bool named = false) {
     return isApps(row) && !named && style() != Style::Google;

@@ -1,5 +1,6 @@
 #include "service/home_profiles.hpp"
 #include "service/app_kinds.hpp"
+#include "service/home_videos.hpp"
 #include <algorithm>
 #include <cctype>
 #include <cstdint>
@@ -17,7 +18,7 @@ const char *kLayoutKeys[] = {"rows", "order", "sort", "hidden", "kinds", "channe
                              "picture", "appNames", "clockFormat", "showInputs",
                              "showLgHome", "showLive", "colours", "motion",
                              "wallpaper", "wallpaperMode", "wallpaperRotate",
-                             "feedOrder", "feedHidden", "style"};
+                             "feedOrder", "feedHidden", "style", "liveWallpaper"};
 // Fork: the rows of Home's own tab, in the order they are shown, and the ones switched off. The
 // default is v0.118.0's order; a row with nothing in it (no YouTube key, no account) is skipped.
 const char *const kFeedRows[] = {"apps", "trending", "movies", "series", "netflix", "youtube",
@@ -208,6 +209,7 @@ Json defaultDocument() {
     document.set("colours", Json::parse("null"));
     document.set("motion", Json::text("subtle"));
     document.set("style", Json::text("google"));
+    document.set("liveWallpaper", Json::text(""));
     document.set("wallpaper", Json::text(""));
     document.set("wallpaperMode", Json::text("auto"));
     document.set("wallpaperRotate", Json::text("off"));
@@ -394,6 +396,8 @@ Json normalizeHomeDocument(const Json &raw) {
     result.set("colours", validColours(raw["colours"]));
     result.set("motion", Json::text(oneOf(raw["motion"], kMotionLevels, "subtle")));
     result.set("style", Json::text(oneOf(raw["style"], kStyles, "google")));
+    result.set("liveWallpaper", Json::text(homeVideoName(raw["liveWallpaper"].string())
+                                               ? raw["liveWallpaper"].string() : ""));
     result.set("wallpaper", Json::text(wallpaperChoice(raw["wallpaper"], "")));
     result.set("wallpaperMode", Json::text(oneOf(raw["wallpaperMode"], kWallpaperModes, "auto")));
     result.set("wallpaperRotate", Json::text(oneOf(raw["wallpaperRotate"], kRotateMinutes, "off")));
@@ -520,6 +524,13 @@ HomeDocumentUpdate updateHomeLayout(const Json &input, const Json &body) {
     proposed.set("motion", Json::text(oneOf(body["motion"], kMotionLevels,
                                             current["motion"].string())));
     proposed.set("style", Json::text(oneOf(body["style"], kStyles, current["style"].string("google"))));
+    // Fork: the live wallpaper, a file in home-videos ("" for none); a name that could not be one
+    // keeps the current choice.
+    if (body["liveWallpaper"].isString() &&
+        (body["liveWallpaper"].string().empty() || homeVideoName(body["liveWallpaper"].string())))
+        proposed.set("liveWallpaper", body["liveWallpaper"]);
+    else
+        proposed.set("liveWallpaper", Json::text(current["liveWallpaper"].string()));
     proposed.set("wallpaper", Json::text(wallpaperChoice(body["wallpaper"],
                                                          current["wallpaper"].string())));
     proposed.set("wallpaperMode", Json::text(oneOf(body["wallpaperMode"], kWallpaperModes,

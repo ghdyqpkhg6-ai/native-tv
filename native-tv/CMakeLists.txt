@@ -57,7 +57,7 @@ add_library(nativetv_daemon src/daemon/app_tile_manager.cpp
   src/daemon/adblock_manager.cpp src/daemon/config.cpp src/daemon/devtools_firewall.cpp
   src/daemon/daily_backup_scheduler.cpp src/daemon/game_frame_rate.cpp
   src/daemon/home_boot_manager.cpp
-  src/daemon/home_crash_breaker.cpp
+  src/daemon/home_crash_breaker.cpp src/daemon/home_video_player.cpp
   src/daemon/home_orchestrator.cpp
   src/daemon/home_probe_gate.cpp
   src/daemon/home_restore_manager.cpp
@@ -141,7 +141,7 @@ add_library(nativetv_tv_services src/service/control_commands.cpp
   src/service/home_picture.cpp src/service/home_now.cpp
   src/service/home_open.cpp
   src/service/home_content.cpp src/service/home_discover.cpp
-  src/service/home_image_proxy.cpp src/service/youtube_account.cpp)
+  src/service/home_image_proxy.cpp src/service/youtube_account.cpp src/service/home_videos.cpp)
 target_link_libraries(nativetv_tv_services PUBLIC nativetv_core nativetv_names
   PkgConfig::CURL ZLIB::ZLIB)
 target_compile_options(nativetv_tv_services PRIVATE -Wall -Wextra -Werror)

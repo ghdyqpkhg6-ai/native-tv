@@ -51,6 +51,7 @@ enum class Operation {
     YouTubeAccount, // GET /api/youtube/account
     YouTubeLink,    // POST /api/youtube/account/link
     YouTubeUnlink,  // POST /api/youtube/account/unlink
-    YouTubeUse      // POST /api/youtube/account/use: the profile's account, by id or the next one
+    YouTubeUse,     // POST /api/youtube/account/use: the profile's account, by id or the next one
+    HomeVideo       // POST /api/home/video: fork, Home's live wallpaper ({play})
 };
 }

@@ -227,6 +227,7 @@ bool Application::update(uint32_t now) {
         homeUpdate();
         homeBeat(nullptr);
     }
+    homeVideoTick();
     if (screen_)
         screenBusy = screen_->update(*this);
     // The wallpaper is shown once its picture has arrived.
@@ -446,6 +447,17 @@ void Application::resolvePictures() {
             node.opacity = 0;
     }
 }
+void Application::homeVideoTick() {
+    const bool wanted = active_ && state_.screen == Screen::Home && home::liveWallpaper(state_.catalogue).valid();
+    // Asked again every 5 s: the server unloads a video nobody has asked for in 20 s.
+    if (wanted == videoWanted_ && (!wanted || static_cast<int32_t>(now_ - videoAskedAt_) < 5000))
+        return;
+    Json body = Json::object();
+    body.set("play", Json::flag(wanted));
+    services_.write("homevideo", Operation::HomeVideo, body);
+    videoWanted_ = wanted;
+    videoAskedAt_ = now_;
+}
 void Application::buildFrame() {
     // Fork: Home's style (Home settings > Appearance), a choice still being saved already counts.
     // Home's rows depend on it (Ribbon keeps only the apps), so a change rebuilds them.
@@ -456,6 +468,7 @@ void Application::buildFrame() {
         rebuildHome();
     }
     scene_.reset();
+    scene_.background = {0, 0, 0, 1}; // a screen that leaves it alone is opaque, never see-through
     kit::setMotionLevel(motionLevel());
     kit::Paint paint{scene_, *glyphs_};
     Scene &scene = scene_;

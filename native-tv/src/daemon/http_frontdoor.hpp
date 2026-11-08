@@ -15,6 +15,7 @@
 #include "service/home_content.hpp"
 #include "service/home_discover.hpp"
 #include "service/youtube_account.hpp"
+#include "daemon/home_video_player.hpp"
 #include "service/home_image_proxy.hpp"
 #include "service/home_picture.hpp"
 #include "service/home_open.hpp"
@@ -470,6 +471,7 @@ class HttpFrontDoor {
     LunaClient &luna_;
     ChildProcessRunner &children_;
     Logger *logger_;
+    mutable HomeVideoPlayer homeVideo_; // fork: Home's live wallpaper
     service::HistoryRecorder *historyRecorder_;
     ScreenTimeEnforcer *screenTimeEnforcer_;
     CommandPolicyExecutor *commandPolicy_;

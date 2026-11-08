@@ -1,4 +1,5 @@
 #include "daemon/http_frontdoor.hpp"
+#include "service/home_videos.hpp"
 #include "daemon/app_elevation_store.hpp"
 #include "daemon/app_elevation_executor.hpp"
 #include "daemon/app_install_executor.hpp"
@@ -1770,7 +1771,7 @@ HttpFrontDoor::HttpFrontDoor(ServerConfig config, std::string version, std::stri
       proxySecret_(std::getenv("TVWEB_PROXY_SECRET") ? std::getenv("TVWEB_PROXY_SECRET") : ""),
       proxy_(std::move(proxy)),
       handoffProxy_(std::move(handoffProxy)), luna_(luna), children_(children),
-      logger_(logger), historyRecorder_(historyRecorder),
+      logger_(logger), homeVideo_(luna, logger), historyRecorder_(historyRecorder),
       screenTimeEnforcer_(screenTimeEnforcer), commandPolicy_(commandPolicy),
       gameFrameRate_(gameFrameRate), stateSubscriptions_(stateSubscriptions),
       adBlockManager_(adBlockManager), devtoolsFirewall_(devtoolsFirewall),
@@ -15994,6 +15995,7 @@ Json HttpFrontDoor::homeCatalogueResponse(bool view) const {
     if (homeWallpaperUploadActive_.load())
         wallpaperStatus.set("uploading", Json::flag(true));
     response.set("wallpapers", wallpaperStatus);
+    response.set("videos", service::homeVideoList(dataRoot_));
 
     struct stat homeInfo = {};
     int64_t layoutVersion = 0;
@@ -17912,6 +17914,41 @@ void HttpFrontDoor::dispatch(HttpExchange &exchange) const {
     }
     // Fork: signing a YouTube account in and out (youtube_account.hpp). Nothing secret is sent back:
     // the code shown on the TV is the one the person types at google.com/device.
+    // Fork: Home's live wallpaper (daemon/home_video_player.hpp). Home asks {"play": true} every
+    // few seconds while it is on screen and {"play": false} when it leaves; the file is the active
+    // profile's "liveWallpaper".
+    if (request.uri == "/api/home/video" && request.method == "POST") {
+        if (rejectCrossSitePost(exchange))
+            return;
+        std::string text;
+        if (exchange.setBodyLimit(1024)) {
+            char buffer[256];
+            for (;;) {
+                const int count = exchange.readBody(buffer, sizeof(buffer));
+                if (count <= 0)
+                    break;
+                text.append(buffer, static_cast<size_t>(count));
+            }
+        }
+        const Json body = Json::parse(text);
+        std::string path;
+        if (body["play"].boolean()) {
+            std::lock_guard<std::mutex> lock(homeConfigMutex_);
+            JsonFile file(dataFilePath(dataRoot_, "home.json"), 8 * 1024 * 1024);
+            const JsonFileResult stored = file.load();
+            if (stored.found) {
+                const Json layout = service::homeLayout(service::normalizeHomeDocument(stored.value));
+                path = service::homeVideoPath(dataRoot_, layout["liveWallpaper"].string());
+            }
+        }
+        const Json result = homeVideo_.want(path);
+        (void)exchange.respond(200,
+                               {{"Content-Type", "application/json; charset=utf-8"},
+                                {"Cache-Control", "no-store"},
+                                {"X-Content-Type-Options", "nosniff"}},
+                               result.dump());
+        return;
+    }
     if (request.uri.compare(0, 20, "/api/youtube/account") == 0) {
         const Json document = currentConfigDocument();
         const std::string clientId = document["youtubeClientId"].string();

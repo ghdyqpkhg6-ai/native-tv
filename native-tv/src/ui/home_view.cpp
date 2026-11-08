@@ -420,10 +420,12 @@ void drawHome(kit::Paint paint, const Frame &frame) {
     const home::Style style = home::style();
     const bool hasWallpaper = !home.wallpaperShown.empty() || !home.wallpaperTarget.empty();
     float wall = static_cast<float>(motion.value("wall"));
-    // Fork: each style's backdrop (home_layout.hpp). Classic has none of the wallpaper or the aurora:
-    // only its glow. Liquid Glass keeps the wallpaper, or its own gradient without one. Ribbon shows
-    // the wallpaper whole, with no hero over it.
-    if (style == home::Style::Classic) {
+    // Fork: a live wallpaper plays on the TV's video plane under the window (home_layout.hpp,
+    // daemon/home_video_player.hpp): the background is left see-through and no backdrop is drawn.
+    const Json live = home::liveWallpaper(state.catalogue);
+    if (live.valid()) {
+        scene.background = {0, 0, 0, 0};
+    } else if (style == home::Style::Classic) {
         kit::classicWall(paint, home.art.wallTint);
     } else {
         if (style == home::Style::Glass && !hasWallpaper)
@@ -495,6 +497,11 @@ void drawHome(kit::Paint paint, const Frame &frame) {
         kit::pillButton(paint, hide);
     }
     drawTopBar(paint, frame, static_cast<int>(home.tab));
+    // The video's credit, which its artist's terms ask for, under the clock.
+    if (live.valid() && !live["credit"].string().empty())
+        paint.glyphs.text(scene, {960, 100, 960 - kit::canvas::safeX, kit::type::labelS.line},
+                          live["credit"].string(), kit::type::labelS, kit::focus::withAlpha({1, 1, 1, 1}, .7f),
+                          Node::Align::Right);
     float fault = static_cast<float>(motion.value("fault"));
     if (fault > .002f)
         banner(paint, fault);

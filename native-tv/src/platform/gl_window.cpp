@@ -16,11 +16,24 @@ GlWindow::GlWindow(bool windowed) {
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
     SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 0);
     SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 0);
+    // Fork: an alpha channel, so a see-through background shows the video plane under the window
+    // (Home's live wallpaper). Without one on offer, the window is made as before.
+    SDL_GL_SetAttribute(SDL_GL_ALPHA_SIZE, 8);
     window_ = SDL_CreateWindow("Native Tv Native", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
                                windowed ? 1280 : 1920, windowed ? 720 : 1080,
                                SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN);
     if (window_)
         context_ = SDL_GL_CreateContext(window_);
+    if (!context_) {
+        if (window_)
+            SDL_DestroyWindow(window_);
+        SDL_GL_SetAttribute(SDL_GL_ALPHA_SIZE, 0);
+        window_ = SDL_CreateWindow("Native Tv Native", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
+                                   windowed ? 1280 : 1920, windowed ? 720 : 1080,
+                                   SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN);
+        if (window_)
+            context_ = SDL_GL_CreateContext(window_);
+    }
     if (!context_) {
         // The destructor does not run for a constructor that throws.
         const WindowError error(WindowStage::Context, SDL_GetError());
