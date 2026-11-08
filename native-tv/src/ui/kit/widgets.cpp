@@ -519,48 +519,42 @@ void appCircle(Paint paint, const AppCircle &circle) {
 void appPanel(Paint paint, const AppPanel &panel) {
     const bool ribbon = panel.look == PanelLook::Ribbon, glass = panel.look == PanelLook::Glass;
     const float amount = focus::clamp01(panel.focus);
-    // A Ribbon tile grows up out of the strip instead of zooming, so its neighbours stay flush.
-    Rect rest = panel.rest;
-    if (ribbon) {
-        const float rise = 24 * amount;
-        rest.y -= rise;
-        rest.h += rise;
-    }
+    // The tile is the app's icon, whole and square, as the app's owner drew it. A Ribbon tile rises
+    // out of the strip on focus and the others zoom; both move the tile rather than resize it, so
+    // the picture keeps its size and is never asked for again mid-move.
+    const Rect rest = panel.rest;
     focus::Look look = focus::lookAt(rest, ribbon ? 1.0f : zoomTarget(motion::scale::card), panel.focus);
     if (invisible(panel.enter) || offCanvas(look.rect))
         return;
     Scene &scene = paint.scene;
-    Transform scale = focus::transformAt(rest, look.scale);
-    Group group(scene, panel.enter, look.scale != 1 ? &scale : nullptr);
+    Transform scale = ribbon ? Transform::translate(0, -24 * amount) : focus::transformAt(rest, look.scale);
+    Group group(scene, panel.enter, ribbon ? (amount > 0 ? &scale : nullptr) : (look.scale != 1 ? &scale : nullptr));
     const float rounding = ribbon ? 0 : radius::md;
     if (!ribbon)
         focusGlow(scene, rest, rounding, panel.color, panel.focus);
-    // The artwork is a square app icon with its own background. It stands the tile's full height in
-    // the middle, and the fill takes the colour of the icon's edge once it has arrived
-    // (Node::edgeFill), so icon and tile read as one piece rather than a small square on a large one.
-    // Until then, and for artwork with see-through edges, the fill is the app's own colour.
-    Node &base = scene.shape(rest, panel.color, rounding);
-    base.edgeFill = !panel.image.empty();
-    if (!ribbon) {
+    // A neutral placeholder until the icon arrives, hidden under an opaque one (Node::backing).
+    Node &base = scene.shape(rest, color::surface2, rounding);
+    base.backing = !panel.image.empty();
+    if (!ribbon)
         applyFocus(base, look);
-        if (look.ringAlpha <= 0)
-            base.ring = {1, 0, glass ? Color{1, 1, 1, .3f} : Color{1, 1, 1, .06f}};
-    }
-    if (!panel.image.empty()) {
-        const float side = std::min(rest.h, rest.w);
-        scene.picture({rest.x + (rest.w - side) / 2, rest.y, side, side}, 0, 0).value = panel.image;
-    } else {
-        paint.glyphs.icon(scene, centreOf(rest, rest.h * .36f), panel.icon, white);
-    }
-    // Light from above: Glass's sheen is a clear band, the others' a faint one.
-    Node &sheen = scene.shape(rest, clear, rounding);
-    sheen.gradient = gradient(180, {{{1, 1, 1, glass ? .24f : .07f}, 0},
-                                    {{1, 1, 1, glass ? .06f : 0}, .45f},
-                                    {{0, 0, 0, glass ? 0 : .12f}, 1}});
-    if (ribbon && amount < 1) // the strip is lit where focus is and darker either side of it
+    if (!panel.image.empty())
+        scene.picture(rest, 0, rounding).value = panel.image;
+    else
+        paint.glyphs.icon(scene, centreOf(rest, rest.h * .42f), panel.icon, white);
+    if (!ribbon) {
+        // The rim, over the picture so it shows on any icon; Glass's is brighter, with a sheen.
+        Node &rim = scene.shape(rest, clear, rounding);
+        rim.ring = {1, 0, glass ? Color{1, 1, 1, .32f} : Color{1, 1, 1, .08f}};
+        if (glass)
+            rim.gradient = gradient(180, {{{1, 1, 1, .18f}, 0}, {{1, 1, 1, .03f}, .45f}, {{1, 1, 1, 0}, .7f}});
+        if (look.ringAlpha > 0)
+            focusRing(scene, rest, rounding, look.ringAlpha);
+    } else if (amount < 1) {
+        // The strip is lit where focus is and darker either side of it.
         scene.shape(rest, {0, 0, 0, .3f * (1 - amount)}, 0);
+    }
     if (panel.showName && amount > .004f && !panel.name.empty()) {
-        const float width = std::max(rest.w + 120, 360.0f), cx = rest.x + rest.w / 2;
+        const float width = std::max(rest.w + 160, 360.0f), cx = rest.x + rest.w / 2;
         if (ribbon)
             text(paint, {cx - width / 2, rest.y - type::title.line - 8 - focus::labelRise(amount), width,
                          type::title.line},

@@ -87,11 +87,11 @@ inline bool tiles(const CardRow &row, bool named = false) {
     return isApps(row) && !named && style() != Style::Google;
 }
 // The Ribbon strip: tiles edge to edge on a band that stands clear of the screen's foot.
-constexpr float kRibbonTop = 800, kRibbonTileW = 250, kRibbonTileH = 200;
+constexpr float kRibbonTop = 800, kRibbonTileW = 200, kRibbonTileH = 200;
 
 inline float itemWidth(const CardRow &row, bool named = false) {
     if (tiles(row, named))
-        return style() == Style::Ribbon ? kRibbonTileW : kit::layout::cardW;
+        return style() == Style::Ribbon ? kRibbonTileW : kit::layout::cardH; // square: the icon whole
     return isApps(row) ? kit::layout::appD : kit::layout::cardW;
 }
 // `named`: a row of apps that carries every name (the Apps page), so the circles stand wider.
