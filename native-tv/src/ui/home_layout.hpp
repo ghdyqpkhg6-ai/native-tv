@@ -72,7 +72,9 @@ inline Style styleOf(const std::string &name) {
                               : Style::Google;
 }
 // Fork: the active profile's live wallpaper ("liveWallpaper" in the Home layout) as the catalogue
-// lists it in "videos" ({id, title, credit}); invalid Json when there is none or its file is gone.
+// lists it in "videos" ({id, title, credit}). A USB drive's video whose drive is unplugged gives
+// way to the first of the TV's own videos until the drive is back (service/home_videos.hpp, which
+// the server's choice matches); invalid Json when there is none of either: the still wallpaper.
 inline Json liveWallpaper(const Json &catalogue) {
     const std::string id = catalogue["layout"]["liveWallpaper"].string();
     if (id.empty())
@@ -80,6 +82,10 @@ inline Json liveWallpaper(const Json &catalogue) {
     for (const Json &video : catalogue["videos"].items())
         if (video["id"].string() == id)
             return video;
+    if (id.compare(0, 4, "usb/") == 0)
+        for (const Json &video : catalogue["videos"].items())
+            if (video["id"].string().compare(0, 4, "usb/") != 0)
+                return video;
     return Json();
 }
 // Home's row of apps drawn as tiles: every style but Google's, never the Apps page (`named`).

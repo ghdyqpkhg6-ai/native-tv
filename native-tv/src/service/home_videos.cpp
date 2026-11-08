@@ -206,5 +206,13 @@ std::string homeVideoPath(const std::string &dataRoot, const std::string &id) {
     return !path.empty() && regularFile(path) ? path : "";
 }
 
+std::string homeVideoPlayPath(const std::string &dataRoot, const std::string &id) {
+    const std::string path = homeVideoPath(dataRoot, id);
+    if (!path.empty() || id.compare(0, 4, "usb/") != 0)
+        return path;
+    const std::vector<std::string> own = videosIn(videoDirectory(dataRoot));
+    return own.empty() ? "" : videoDirectory(dataRoot) + "/" + own.front();
+}
+
 } // namespace service
 } // namespace nativetv

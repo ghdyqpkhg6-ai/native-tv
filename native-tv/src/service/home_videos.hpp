@@ -23,6 +23,9 @@ bool homeVideoId(const std::string &id);
 Json homeVideoList(const std::string &dataRoot);
 // The file's full path when `id` is one of the listed videos, else empty (a drive unplugged).
 std::string homeVideoPath(const std::string &dataRoot, const std::string &id);
+// What plays for the choice `id`: its file, or, for a USB drive's video while the drive is
+// unplugged, the first of the TV's own videos; empty when neither is there.
+std::string homeVideoPlayPath(const std::string &dataRoot, const std::string &id);
 
 } // namespace service
 } // namespace nativetv

@@ -17939,7 +17939,7 @@ void HttpFrontDoor::dispatch(HttpExchange &exchange) const {
             const JsonFileResult stored = file.load();
             if (stored.found) {
                 const Json layout = service::homeLayout(service::normalizeHomeDocument(stored.value));
-                path = service::homeVideoPath(dataRoot_, layout["liveWallpaper"].string());
+                path = service::homeVideoPlayPath(dataRoot_, layout["liveWallpaper"].string());
                 sound = layout["liveSound"].boolean();
             }
         }
