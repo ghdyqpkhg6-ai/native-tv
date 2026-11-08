@@ -17941,7 +17941,11 @@ void HttpFrontDoor::dispatch(HttpExchange &exchange) const {
                 path = service::homeVideoPath(dataRoot_, layout["liveWallpaper"].string());
             }
         }
-        const Json result = homeVideo_.want(path);
+        const std::string windowId = body["windowId"].string();
+        const bool validWindow = windowId.size() <= 64 &&
+            windowId.find_first_not_of("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-.") ==
+                std::string::npos;
+        const Json result = homeVideo_.want(path, validWindow ? windowId : "");
         (void)exchange.respond(200,
                                {{"Content-Type", "application/json; charset=utf-8"},
                                 {"Cache-Control", "no-store"},

@@ -31,9 +31,9 @@ struct ImageView {
     float fade = 0;            // 0 to 1 over kFadeMs from the frame the picture arrived
     bool failed = false;       // the server has none (or the decode failed): nothing more to wait for
     bool opaque = false;       // see DecodedImage; only meaningful once the texture is
-    // Fork: the mean of the four corner pixels, for a fill that continues the picture past its
-    // edge (Node::edgeFill); alpha 0 until the texture is.
-    Color edge = {0, 0, 0, 0};
+    // Fork: the means of the two top and the two bottom corner pixels, for a fill that continues
+    // the picture past its sides (Node::edgeFill); alpha 0 until the texture is.
+    Color edgeTop = {0, 0, 0, 0}, edgeBottom = {0, 0, 0, 0};
 };
 // Pictures keyed by (id, size) under a texture byte budget. Decoding runs on worker threads;
 // the render thread only copies finished rows into textures, as many bytes per frame as
@@ -58,7 +58,7 @@ class ImageLoader {
         TextureId texture = 0;
         int textureWidth = 0, textureHeight = 0, rowsUploaded = 0;
         bool opaque = false;
-        Color edge = {0, 0, 0, 0};
+        Color edgeTop = {0, 0, 0, 0}, edgeBottom = {0, 0, 0, 0};
         size_t bytes = 0;
         unsigned usedTick = 0;
         double arrivedMs = 0, retryAtMs = 0;

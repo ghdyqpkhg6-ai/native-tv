@@ -219,7 +219,8 @@ ImageView ImageLoader::get(const std::string &id, int width, int height, ImageFi
         view.height = slot->textureHeight;
         view.fade = std::min(1.0f, static_cast<float>(nowMs - slot->arrivedMs) / kFadeMs);
         view.opaque = slot->opaque;
-        view.edge = slot->edge;
+        view.edgeTop = slot->edgeTop;
+        view.edgeBottom = slot->edgeBottom;
     }
     view.failed = slot->state == Slot::State::Failed;
     return view;
@@ -298,12 +299,13 @@ size_t ImageLoader::pump(size_t uploadBudgetBytes, double nowMs) {
         {
             const DecodedImage &image = slot.pixels;
             const size_t w = static_cast<size_t>(image.width), hgt = static_cast<size_t>(image.height);
-            const size_t corners[] = {0, w - 1, (hgt - 1) * w, hgt * w - 1};
-            float sum[4] = {0, 0, 0, 0};
-            for (size_t corner : corners)
-                for (int c = 0; c < 4; ++c)
-                    sum[c] += image.rgba[corner * 4 + c];
-            slot.edge = {sum[0] / 1020.0f, sum[1] / 1020.0f, sum[2] / 1020.0f, sum[3] / 1020.0f};
+            auto mean = [&image](size_t first, size_t second) {
+                const uint8_t *a = &image.rgba[first * 4], *b = &image.rgba[second * 4];
+                return Color{(a[0] + b[0]) / 510.0f, (a[1] + b[1]) / 510.0f, (a[2] + b[2]) / 510.0f,
+                             (a[3] + b[3]) / 510.0f};
+            };
+            slot.edgeTop = mean(0, w - 1);
+            slot.edgeBottom = mean((hgt - 1) * w, hgt * w - 1);
         }
         slot.state = Slot::State::Uploading;
         uploads_.push_back(result.slot);

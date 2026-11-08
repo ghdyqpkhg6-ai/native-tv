@@ -1,5 +1,5 @@
 {
-  "tile": {"size": 192, "top": "#2A2D34", "bottom": "#17191D", "fill": 0.6, "glyphColor": "#A8C7FA", "glyphFill": 0.52},
+  "tile": {"size": 512, "top": "#2A2D34", "bottom": "#17191D", "fill": 0.6, "glyphColor": "#A8C7FA", "glyphFill": 0.52},
   "sources": {
     "dashboard-icons": {
       "repo": "homarr-labs/dashboard-icons",

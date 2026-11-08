@@ -27,13 +27,14 @@ class HomeVideoPlayer {
     HomeVideoPlayer(const HomeVideoPlayer &) = delete;
     HomeVideoPlayer &operator=(const HomeVideoPlayer &) = delete;
 
-    // `path`: the file to keep playing, or empty to stop. Answers {playing, loading, error}.
-    Json want(const std::string &path);
+    // `path`: the file to keep playing, or empty to stop; `windowId`: the TV app's exported video
+    // window, where the picture shows. Answers {playing, loading, error}.
+    Json want(const std::string &path, const std::string &windowId);
 
   private:
     struct State {
         std::mutex mutex;
-        std::string path, mediaId, error;
+        std::string path, windowId, mediaId, error;
         unsigned generation = 0;
         bool loading = false;
         std::chrono::steady_clock::time_point lastWant;
@@ -50,6 +51,7 @@ class HomeVideoPlayer {
     std::mutex watchMutex_;
     std::condition_variable watchWake_;
     bool stopping_ = false;
+    unsigned checks_ = 0;
     std::thread watcher_;
 };
 

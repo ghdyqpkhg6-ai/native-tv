@@ -6,6 +6,7 @@
 #include "ui/home_layout.hpp"
 #include "ui/splash.hpp"
 #include <algorithm>
+#include <dlfcn.h>
 #include <cmath>
 #include <cstdlib>
 
@@ -438,15 +439,59 @@ void Application::resolvePictures() {
             node.opacity *= view.fade;
             if (view.opaque && index && scene_.nodes[index - 1].backing)
                 scene_.nodes[index - 1].opacity = 0;
-            if (index && scene_.nodes[index - 1].edgeFill && view.edge.a > .9f) {
+            if (index && scene_.nodes[index - 1].edgeFill && view.edgeTop.a > .9f && view.edgeBottom.a > .9f) {
+                // The picture's top edge colour fading to its bottom one, as icons with a shaded
+                // tile of their own have, so no seam shows where the picture meets the fill.
                 Node &fill = scene_.nodes[index - 1];
-                fill.color = {view.edge.r, view.edge.g, view.edge.b, fill.color.a};
-                fill.gradient.stops = 0;
+                const float alpha = fill.color.a;
+                fill.color = {view.edgeTop.r, view.edgeTop.g, view.edgeTop.b, alpha};
+                fill.gradient = Gradient();
+                fill.gradient.angle = 180;
+                fill.gradient.stops = 2;
+                fill.gradient.color[0] = fill.color;
+                fill.gradient.at[0] = 0;
+                fill.gradient.color[1] = {view.edgeBottom.r, view.edgeBottom.g, view.edgeBottom.b, alpha};
+                fill.gradient.at[1] = 1;
             }
         } else
             node.opacity = 0;
     }
 }
+namespace {
+// webOS's SDL makes a video window "exported" to the media pipeline: a pipeline loaded with its id
+// shows its picture in that window, under this app's own (as LG's apps' video does). Without one,
+// a pipeline decodes but the TV never connects it to the screen. Looked up at run time, since
+// SDL builds other than LG's have no such functions; the id is "" there.
+struct SdlRect {
+    int x, y, w, h; // SDL_Rect's layout
+};
+std::string exportedVideoWindow() {
+    static std::string id;
+    static int attempts = 0;
+    if (!id.empty() || attempts >= 20)
+        return id;
+    ++attempts;
+    using Create = const char *(*)(int);
+    using Place = int (*)(const char *, SdlRect *, SdlRect *);
+    const auto create = reinterpret_cast<Create>(dlsym(RTLD_DEFAULT, "SDL_webOSCreateExportedWindow"));
+    const auto place = reinterpret_cast<Place>(dlsym(RTLD_DEFAULT, "SDL_webOSSetExportedWindow"));
+    if (!create) {
+        attempts = 20;
+        return id;
+    }
+    const char *made = create(0);
+    if (made && *made) {
+        id = made;
+        // The whole screen, from the whole picture.
+        if (place) {
+            SdlRect source = {0, 0, 1920, 1080}, destination = {0, 0, 1920, 1080};
+            place(made, &source, &destination);
+        }
+    }
+    return id;
+}
+} // namespace
+
 void Application::homeVideoTick() {
     const bool wanted = active_ && state_.screen == Screen::Home && home::liveWallpaper(state_.catalogue).valid();
     // Asked again every 5 s: the server unloads a video nobody has asked for in 20 s.
@@ -454,6 +499,8 @@ void Application::homeVideoTick() {
         return;
     Json body = Json::object();
     body.set("play", Json::flag(wanted));
+    if (wanted)
+        body.set("windowId", Json::text(exportedVideoWindow()));
     services_.write("homevideo", Operation::HomeVideo, body);
     videoWanted_ = wanted;
     videoAskedAt_ = now_;

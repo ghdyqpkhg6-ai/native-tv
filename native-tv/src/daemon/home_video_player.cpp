@@ -33,12 +33,14 @@ HomeVideoPlayer::~HomeVideoPlayer() {
     stop(luna_, state_, lock);
 }
 
-Json HomeVideoPlayer::want(const std::string &path) {
+Json HomeVideoPlayer::want(const std::string &path, const std::string &windowId) {
     std::unique_lock<std::mutex> lock(state_->mutex);
     state_->lastWant = std::chrono::steady_clock::now();
-    if (path != state_->path) {
+    // A new window (the TV app started again) needs a pipeline loaded for it.
+    if (path != state_->path || (!path.empty() && windowId != state_->windowId)) {
         stop(luna_, state_, lock);
         state_->path = path;
+        state_->windowId = windowId;
         state_->error.clear();
         if (!path.empty())
             start(luna_, logger_, state_, lock);
@@ -57,6 +59,8 @@ void HomeVideoPlayer::start(LunaClient &luna, Logger *logger, const std::shared_
     state->loading = true;
     Json option = Json::object();
     option.set("appId", Json::text(kAppId));
+    if (!state->windowId.empty())
+        option.set("windowId", Json::text(state->windowId));
     Json inner = Json::object();
     inner.set("option", option);
     Json payload = Json::object();
@@ -89,8 +93,6 @@ void HomeVideoPlayer::start(LunaClient &luna, Logger *logger, const std::shared_
             }
             state->mediaId = mediaId;
             client->call("com.webos.media/play", withMedia(mediaId), ignore, kAppId);
-            // Full screen on the video plane, as a TV app's own video is.
-            client->call("com.webos.media/switchToFullscreen", withMedia(mediaId), ignore, kAppId);
             // A loop: at its end the file starts again.
             LunaSubscriptionHandlers handlers;
             handlers.message = [weak, generation, client, mediaId](const Json &event) {
@@ -135,6 +137,7 @@ void HomeVideoPlayer::stop(LunaClient &luna, const std::shared_ptr<State> &state
     state->mediaId.clear();
     state->loading = false;
     state->path.clear();
+    state->windowId.clear();
 }
 
 void HomeVideoPlayer::watch() {
@@ -148,7 +151,34 @@ void HomeVideoPlayer::watch() {
             if (logger_)
                 logger_->info("home video: Home stopped asking; unloading");
             stop(luna_, state_, lock);
+            continue;
         }
+        // Every 10 s: a pipeline the TV dropped (its resource policy can take the decoders back)
+        // is loaded again, so Home never sits over a video that is gone.
+        if (++checks_ % 5 != 0 || state_->mediaId.empty())
+            continue;
+        const std::weak_ptr<State> weak = state_;
+        const std::string mediaId = state_->mediaId;
+        LunaClient *client = &luna_;
+        Logger *logger = logger_;
+        luna_.call("com.webos.media/getPipelineState", withMedia(mediaId),
+                   [weak, mediaId, client, logger](const LunaReply &reply) {
+                       const std::shared_ptr<State> state = weak.lock();
+                       if (!state || reply.timedOut || !reply.error.empty() ||
+                           reply.response["returnValue"].boolean(true))
+                           return;
+                       std::unique_lock<std::mutex> lock(state->mutex);
+                       if (state->mediaId != mediaId || state->path.empty())
+                           return;
+                       if (logger)
+                           logger->info("home video: the pipeline is gone; loading it again");
+                       const std::string path = state->path, windowId = state->windowId;
+                       stop(*client, state, lock);
+                       state->path = path;
+                       state->windowId = windowId;
+                       start(*client, logger, state, lock);
+                   },
+                   kAppId);
     }
 }
 
