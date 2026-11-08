@@ -64,7 +64,10 @@ void HomeVideoPlayer::start(LunaClient &luna, Logger *logger, const std::shared_
     Json inner = Json::object();
     inner.set("option", option);
     Json payload = Json::object();
-    payload.set("uri", Json::text("file://" + state->path));
+    std::string uri = "file://";
+    for (char c : state->path) // a USB drive's folder or file may have spaces in its name
+        uri += c == ' ' ? std::string("%20") : std::string(1, c);
+    payload.set("uri", Json::text(uri));
     payload.set("type", Json::text("media"));
     payload.set("payload", inner);
     const std::weak_ptr<State> weak = state;
@@ -93,6 +96,10 @@ void HomeVideoPlayer::start(LunaClient &luna, Logger *logger, const std::shared_
             }
             state->mediaId = mediaId;
             client->call("com.webos.media/play", withMedia(mediaId), ignore, kAppId);
+            // A wallpaper is silent, whatever sound its file carries.
+            Json mute = withMedia(mediaId);
+            mute.set("volume", Json::numeric(0));
+            client->call("com.webos.media/setVolume", mute, ignore, kAppId);
             // A loop: at its end the file starts again.
             LunaSubscriptionHandlers handlers;
             handlers.message = [weak, generation, client, mediaId](const Json &event) {

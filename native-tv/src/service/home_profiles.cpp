@@ -396,7 +396,7 @@ Json normalizeHomeDocument(const Json &raw) {
     result.set("colours", validColours(raw["colours"]));
     result.set("motion", Json::text(oneOf(raw["motion"], kMotionLevels, "subtle")));
     result.set("style", Json::text(oneOf(raw["style"], kStyles, "google")));
-    result.set("liveWallpaper", Json::text(homeVideoName(raw["liveWallpaper"].string())
+    result.set("liveWallpaper", Json::text(homeVideoId(raw["liveWallpaper"].string())
                                                ? raw["liveWallpaper"].string() : ""));
     result.set("wallpaper", Json::text(wallpaperChoice(raw["wallpaper"], "")));
     result.set("wallpaperMode", Json::text(oneOf(raw["wallpaperMode"], kWallpaperModes, "auto")));
@@ -527,7 +527,7 @@ HomeDocumentUpdate updateHomeLayout(const Json &input, const Json &body) {
     // Fork: the live wallpaper, a file in home-videos ("" for none); a name that could not be one
     // keeps the current choice.
     if (body["liveWallpaper"].isString() &&
-        (body["liveWallpaper"].string().empty() || homeVideoName(body["liveWallpaper"].string())))
+        (body["liveWallpaper"].string().empty() || homeVideoId(body["liveWallpaper"].string())))
         proposed.set("liveWallpaper", body["liveWallpaper"]);
     else
         proposed.set("liveWallpaper", Json::text(current["liveWallpaper"].string()));
