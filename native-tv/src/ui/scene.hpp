@@ -144,6 +144,9 @@ struct Node {
     // Application::resolvePictures hides it once an opaque picture is on show, where it would
     // only tint the picture's edge and its fade.
     bool backing = false;
+    // Fork: a fill that continues the picture drawn next past its sides: once that picture is on
+    // show, this node takes the colour of its edge (keeping its own alpha) and drops its gradient.
+    bool edgeFill = false;
     // SCENE-V2
     Corners corners;            // overrides `radius` when any corner is set
     Gradient gradient;

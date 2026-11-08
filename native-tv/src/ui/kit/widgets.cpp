@@ -522,7 +522,7 @@ void appPanel(Paint paint, const AppPanel &panel) {
     // A Ribbon tile grows up out of the strip instead of zooming, so its neighbours stay flush.
     Rect rest = panel.rest;
     if (ribbon) {
-        const float rise = 28 * amount;
+        const float rise = 24 * amount;
         rest.y -= rise;
         rest.h += rise;
     }
@@ -535,39 +535,34 @@ void appPanel(Paint paint, const AppPanel &panel) {
     const float rounding = ribbon ? 0 : radius::md;
     if (!ribbon)
         focusGlow(scene, rest, rounding, panel.color, panel.focus);
-    // Nearly flat, as an app's own tile is: a touch lighter at the top, a touch darker at the foot.
-    // Glass lets the wallpaper through its colour.
-    const float body = glass ? .5f : 1;
-    Color top = focus::mix(panel.color, white, glass ? .18f : .08f),
-          foot = focus::mix(panel.color, {0, 0, 0, 1}, .14f), middle = panel.color;
-    top.a = foot.a = middle.a = body;
-    Node &base = scene.shape(rest, middle, rounding);
-    base.gradient = gradient(180, {{top, 0}, {middle, .5f}, {foot, 1}});
-    if (ribbon) {
-        // The strip is lit where focus is and darker either side of it.
-        if (amount < 1)
-            scene.shape(rest, {0, 0, 0, .28f * (1 - amount)}, 0);
-    } else {
+    // The artwork is a square app icon with its own background. It stands the tile's full height in
+    // the middle, and the fill takes the colour of the icon's edge once it has arrived
+    // (Node::edgeFill), so icon and tile read as one piece rather than a small square on a large one.
+    // Until then, and for artwork with see-through edges, the fill is the app's own colour.
+    Node &base = scene.shape(rest, panel.color, rounding);
+    base.edgeFill = !panel.image.empty();
+    if (!ribbon) {
         applyFocus(base, look);
         if (look.ringAlpha <= 0)
-            base.ring = {1, 0, glass ? Color{1, 1, 1, .22f} : Color{1, 1, 1, .06f}};
+            base.ring = {1, 0, glass ? Color{1, 1, 1, .3f} : Color{1, 1, 1, .06f}};
     }
-    if (glass) {
-        // The sheen: light across the top fading out by the middle.
-        Node &sheen = scene.shape(rest, clear, rounding);
-        sheen.gradient = gradient(180, {{{1, 1, 1, .20f}, 0}, {{1, 1, 1, .04f}, .45f}, {{1, 1, 1, 0}, .7f}});
+    if (!panel.image.empty()) {
+        const float side = std::min(rest.h, rest.w);
+        scene.picture({rest.x + (rest.w - side) / 2, rest.y, side, side}, 0, 0).value = panel.image;
+    } else {
+        paint.glyphs.icon(scene, centreOf(rest, rest.h * .36f), panel.icon, white);
     }
-    const float side = std::min(rest.h * .58f, rest.w * .46f);
-    const Rect art = {rest.x + (rest.w - side) / 2, rest.y + (rest.h - side) / 2 - (ribbon ? 10 * amount : 0),
-                      side, side};
-    if (!panel.image.empty())
-        scene.picture(art, 0, side * .24f).value = panel.image;
-    else
-        paint.glyphs.icon(scene, centreOf(art, side * .6f), panel.icon, white);
+    // Light from above: Glass's sheen is a clear band, the others' a faint one.
+    Node &sheen = scene.shape(rest, clear, rounding);
+    sheen.gradient = gradient(180, {{{1, 1, 1, glass ? .24f : .07f}, 0},
+                                    {{1, 1, 1, glass ? .06f : 0}, .45f},
+                                    {{0, 0, 0, glass ? 0 : .12f}, 1}});
+    if (ribbon && amount < 1) // the strip is lit where focus is and darker either side of it
+        scene.shape(rest, {0, 0, 0, .3f * (1 - amount)}, 0);
     if (panel.showName && amount > .004f && !panel.name.empty()) {
         const float width = std::max(rest.w + 120, 360.0f), cx = rest.x + rest.w / 2;
         if (ribbon)
-            text(paint, {cx - width / 2, rest.y - type::title.line - 10 - focus::labelRise(amount), width,
+            text(paint, {cx - width / 2, rest.y - type::title.line - 8 - focus::labelRise(amount), width,
                          type::title.line},
                  panel.name, type::title, faded(white, amount), Node::Align::Center);
         else
@@ -585,6 +580,7 @@ void appTray(Paint paint, Rect area, PanelLook look, float alpha) {
     if (look == PanelLook::Ribbon) {
         Node &band = scene.shape(area, {.05f, .055f, .07f, .92f}, 0);
         band.gradient = gradient(180, {{{.09f, .095f, .11f, .94f}, 0}, {{.03f, .03f, .04f, .97f}, 1}});
+        band.shadow = {0, 12, 48, 0, {0, 0, 0, .5f}};
     } else if (look == PanelLook::Glass) {
         Node &tray = scene.shape(area, {1, 1, 1, .12f}, radius::lg);
         tray.gradient = gradient(180, {{{1, 1, 1, .22f}, 0}, {{1, 1, 1, .08f}, 1}});

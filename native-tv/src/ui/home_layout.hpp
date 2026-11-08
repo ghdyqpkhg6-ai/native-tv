@@ -75,8 +75,8 @@ inline Style styleOf(const std::string &name) {
 inline bool tiles(const CardRow &row, bool named = false) {
     return isApps(row) && !named && style() != Style::Google;
 }
-// The Ribbon strip: full height to the screen's foot, tiles edge to edge.
-constexpr float kRibbonTop = 860, kRibbonTileW = 250, kRibbonTileH = 220;
+// The Ribbon strip: tiles edge to edge on a band that stands clear of the screen's foot.
+constexpr float kRibbonTop = 800, kRibbonTileW = 250, kRibbonTileH = 200;
 
 inline float itemWidth(const CardRow &row, bool named = false) {
     if (tiles(row, named))

@@ -119,15 +119,6 @@ std::string styleTitle(const std::string &value) {
         return msg("tv.quick.styleRibbon", "Ribbon");
     return msg("tv.quick.styleGoogle", "Google TV");
 }
-std::string styleHint(const std::string &value) {
-    if (value == "classic")
-        return msg("tv.quick.styleClassicHint", "Dark, with app tiles on a tray");
-    if (value == "glass")
-        return msg("tv.quick.styleGlassHint", "Frosted tiles over the wallpaper");
-    if (value == "ribbon")
-        return msg("tv.quick.styleRibbonHint", "The wallpaper with a strip of apps");
-    return msg("tv.quick.styleGoogleHint", "Highlights and rows");
-}
 std::string feedRowIcon(const std::string &key) {
     return key == "apps" ? "apps" : key == "youtube" || key == "subs" ? "play" : "movie";
 }
@@ -696,8 +687,7 @@ class QuickScreen final : public ScreenView {
                 add(Row::Kind::Choice, value, "timer", sleepLabel(value), value);
         } else if (level_ == Level::Appearance) {
             for (const char *value : kStyles)
-                add(Row::Kind::Choice, value, "palette", styleTitle(value), value, false, false, false,
-                    styleHint(value));
+                add(Row::Kind::Choice, value, "palette", styleTitle(value), value);
         } else {
             static const std::vector<std::pair<std::string, std::string>> titles = {
                 {"clockFormat", msg("tv.quick.clock24", "24-hour clock")},

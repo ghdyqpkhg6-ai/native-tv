@@ -217,7 +217,7 @@ void rows(kit::Paint paint, const Frame &frame, float top = 0) {
             const Rect first = home::item(row, ri, 0, namedApps);
             const float enterAlpha = enterOf(motion, home::id("ER", ri)).alpha;
             if (ribbon) {
-                kit::appTray(paint, {0, first.y, kit::canvas::width, kit::canvas::height - first.y},
+                kit::appTray(paint, {0, first.y, kit::canvas::width, first.h},
                              kit::PanelLook::Ribbon, enterAlpha);
             } else {
                 const Rect last = home::item(row, ri, row.cards.size() - 1, namedApps);

@@ -219,6 +219,7 @@ ImageView ImageLoader::get(const std::string &id, int width, int height, ImageFi
         view.height = slot->textureHeight;
         view.fade = std::min(1.0f, static_cast<float>(nowMs - slot->arrivedMs) / kFadeMs);
         view.opaque = slot->opaque;
+        view.edge = slot->edge;
     }
     view.failed = slot->state == Slot::State::Failed;
     return view;
@@ -294,6 +295,16 @@ size_t ImageLoader::pump(size_t uploadBudgetBytes, double nowMs) {
         slot.textureWidth = slot.pixels.width;
         slot.textureHeight = slot.pixels.height;
         slot.opaque = slot.pixels.opaque;
+        {
+            const DecodedImage &image = slot.pixels;
+            const size_t w = static_cast<size_t>(image.width), hgt = static_cast<size_t>(image.height);
+            const size_t corners[] = {0, w - 1, (hgt - 1) * w, hgt * w - 1};
+            float sum[4] = {0, 0, 0, 0};
+            for (size_t corner : corners)
+                for (int c = 0; c < 4; ++c)
+                    sum[c] += image.rgba[corner * 4 + c];
+            slot.edge = {sum[0] / 1020.0f, sum[1] / 1020.0f, sum[2] / 1020.0f, sum[3] / 1020.0f};
+        }
         slot.state = Slot::State::Uploading;
         uploads_.push_back(result.slot);
     }

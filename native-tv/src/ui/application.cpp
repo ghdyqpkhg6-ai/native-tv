@@ -437,6 +437,11 @@ void Application::resolvePictures() {
             node.opacity *= view.fade;
             if (view.opaque && index && scene_.nodes[index - 1].backing)
                 scene_.nodes[index - 1].opacity = 0;
+            if (index && scene_.nodes[index - 1].edgeFill && view.edge.a > .9f) {
+                Node &fill = scene_.nodes[index - 1];
+                fill.color = {view.edge.r, view.edge.g, view.edge.b, fill.color.a};
+                fill.gradient.stops = 0;
+            }
         } else
             node.opacity = 0;
     }
