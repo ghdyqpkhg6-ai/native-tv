@@ -282,14 +282,16 @@ pack has neither. Every route that serves an icon goes through it: the
 dashboard, Native Tv Home and the shared `/icons/<appId>.png` addresses.
 
 The pack is built by `native-tv/tools/gen_app_icons.py` from
-`native-tv/design/app-icons.json`. Every icon sits on one dark rounded-square
-tile with the same size and padding, so the apps read as a set on the TV's dark
-UI. A brand's logo is drawn as its owner publishes it, in its own colours, and
-is never recoloured: Dashboard Icons (Apache-2.0, pinned commit) supplies it,
-and where the plain logo is dark (X, Apple TV, Prime Video, TikTok, Peacock,
-Tidal, SoundCloud) the file names the brand's own variant for dark surfaces
-(`name` in `brands`). LG's apps, whose glyphs come from `assets/icons/material/`,
-get the glyph in the kit's accent colour on the same tile. The tiles have
+`native-tv/design/app-icons.json`. Every icon sits on a rounded-square tile of
+the same size and padding, in its brand's own colour (`bg`, a top and a bottom
+stop): red for YouTube, green for Spotify, blue for Prime Video, black for
+Netflix. Dashboard Icons (Apache-2.0, pinned commit) supplies the logos; on its
+brand's colour a logo is flattened to one colour (`color`, mostly white) or
+keeps only its light marks (`mask`), and where neither reads (YouTube, YouTube
+Kids, YouTube TV, Instagram, Apple Music) the brand's mark is drawn in the file
+(`svg`). LG's apps and the Homebrew Channel's get a glyph from
+`assets/icons/material/`, white on a colour of each app's own (a `glyphs` entry
+`{glyph, bg}`; a bare glyph name keeps the default dark tile). The tiles have
 square corners: the dashboard rounds them to 8 px at 38 px, and Native Tv Home
 to 10 px at 44 px.
 
@@ -299,7 +301,7 @@ at 44 px. To cover another app, add its id or normalised title to `logos` (and
 its brand to `brands`, if new) or `glyphs`, run
 `uv run native-tv/tools/gen_app_icons.py` and commit the pack. Title keys catch
 store apps whose ids differ between regions; an id key is exact. The pack is
-about 340 KB and installs with the other assets (`deploy.sh` lists it).
+about 890 KB and installs with the other assets (`deploy.sh` lists it).
 
 The themed icons are for the dashboard, Home Assistant and Home's round row. The
 Apps tab on the TV shows each app's own art instead (`/api/home/icon?id=...&own=1`

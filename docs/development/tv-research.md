@@ -1677,3 +1677,13 @@ match what it first read, which turned the real setting off. The server now asks
 1.5 s apart, when a reading differs from the last one, and keeps the change only if it lasts. The
 `com.webos.service.tv.systemproperty/getProperties` call for `OledGSR` that the older fallback uses
 answers `ERROR_06 Invalid argument` on this TV.
+
+## A file's length from the media server (NANO81, webOS 10.3.2)
+
+`com.webos.media/subscribe` on a pipeline from `com.webos.media/load` (`type:
+media`, a `file://` URI) sends `sourceInfo` once, before `loadCompleted`:
+`programInfo[].duration` is the file's length in ms (12000 for a 12 s MP4),
+beside `seekable` and `trickable`. After `play`, `currentTime` (ms) follows about
+every 200 ms. A subscription started after the load gets neither `sourceInfo`
+nor `currentTime`, only the subscribe reply, so the length has to be taken from
+the subscription opened at load.

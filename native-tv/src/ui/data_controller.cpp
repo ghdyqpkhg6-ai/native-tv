@@ -52,7 +52,13 @@ void pillTabsOf(HomeState &home, const Json &catalogue, const Json &discover, co
             if (kindOf(card) == selected)
                 apps.cards.push_back(card);
     }
-    home.rows = {tabs, apps};
+    std::vector<CardRow> rows;
+    for (const CardRow &row : home.rows)
+        if (home::videoRow(row))
+            rows.push_back(row); // the videos stand above the categories
+    rows.push_back(tabs);
+    rows.push_back(apps);
+    home.rows = rows;
 }
 } // namespace
 void Application::pillTabs(HomeState &home) {
@@ -69,11 +75,23 @@ void Application::rebuildHome() {
     if (home.row < home.rows.size() && home.column < home.rows[home.row].cards.size())
         oldId = home.rows[home.row].cards[home.column].id;
     home.rows = homeRows(home.tabs[home.tab].key, state_.catalogue, state_.discover, state_.guide);
-    // Fork: the Ribbon style's Home, and an app bar's, is its apps alone (home_layout.hpp).
-    if ((home::style() == home::Style::Ribbon || home::barMode()) && home.tabs[home.tab].key == "home") {
+    // Fork: the Ribbon style's Home, and an app bar's, is its apps and one row of videos above
+    // them (home_layout.hpp): the subscriptions when an account is signed in, else trending.
+    if (home::strip() && home.tabs[home.tab].key == "home") {
+        const bool subs = std::any_of(home.rows.begin(), home.rows.end(),
+                                      [](const CardRow &row) { return row.key == "subs" && !row.cards.empty(); });
         home.rows.erase(std::remove_if(home.rows.begin(), home.rows.end(),
-                                       [](const CardRow &row) { return !home::isApps(row); }),
+                                       [subs](const CardRow &row) {
+                                           if (home::isApps(row))
+                                               return false;
+                                           if (!home::videoRow(row) || row.cards.empty())
+                                               return true;
+                                           return subs && row.key != "subs";
+                                       }),
                         home.rows.end());
+        // The videos above the apps, whatever the owner's order of Home's rows.
+        std::stable_partition(home.rows.begin(), home.rows.end(),
+                              [](const CardRow &row) { return home::videoRow(row); });
         if (home::bar().design == home::Bar::Pills)
             pillTabs(home);
     }

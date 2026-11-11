@@ -185,7 +185,11 @@ void rows(kit::Paint paint, const Frame &frame, float top = 0) {
     const bool namedApps = home.tabs[home.tab].key == "apps";
     for (size_t ri = 0; ri < home.rows.size(); ++ri) {
         const CardRow &row = home.rows[ri];
-        float labelY = kit::geometry::rowLabelY(static_cast<int>(ri)) + stack;
+        // Fork: the app bar draws its own rows (home_bar.cpp); a strip's videos stand above it.
+        if (home::barRow(row, namedApps) || row.key == "tabs")
+            continue;
+        const float shift = home::videoRow(row) && home::strip() ? home::videoRowShift(ri) : 0;
+        float labelY = kit::geometry::rowLabelY(static_cast<int>(ri)) + stack + shift;
         // Rows well above the bar or below the screen are not drawn at all.
         if (labelY > kit::canvas::height + 40 || labelY + 260 < 100)
             continue;
@@ -237,7 +241,7 @@ void rows(kit::Paint paint, const Frame &frame, float top = 0) {
         // The next row's name is not shown cut by the screen's edge: it fades in as it rises.
         label.enter.alpha *=
             kit::focus::clamp01((kit::canvas::height - 40 - labelY) / 48);
-        paint.scene.pushTransform(Transform::translate(0, stack));
+        paint.scene.pushTransform(Transform::translate(0, stack + shift));
         if (!ribbon) // the Ribbon's focused tile carries its own name
             kit::row(paint, label);
         paint.scene.popTransform();
@@ -440,10 +444,10 @@ void drawHome(kit::Paint paint, const Frame &frame) {
     }
     if (!apps && (style == home::Style::Ribbon || home::barMode())) {
         // Fork: an app bar (home_bar.cpp), or the Ribbon style's strip.
+        // The bar first: its shade lies under the videos above it too.
         if (home::barMode())
             drawAppBar(paint, frame);
-        else
-            rows(paint, frame);
+        rows(paint, frame);
         if (home.rows.empty())
             paint.glyphs.text(scene, {kit::canvas::safeX, 800, 1600, kit::type::body.line},
                               state.catalogue.valid() ? "No apps to show. Open Settings to arrange Home."

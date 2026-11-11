@@ -60,8 +60,9 @@ size_t rowIndex(const std::vector<CardRow> &rows, const char *key) {
 size_t defaultRow(const HomeState &home) {
     if (home.tabs.empty() || home.tabs[home.tab].key != "home")
         return 0;
-    // Fork: an app bar opens on its apps, under the Glass Pill Tabs' categories.
-    if (home::barMode()) {
+    // Fork: an app bar, or the Ribbon, opens on its apps, under the Glass Pill Tabs' categories
+    // and the videos.
+    if (home::strip()) {
         const size_t apps = rowIndex(home.rows, "app");
         return apps < home.rows.size() ? apps : 0;
     }

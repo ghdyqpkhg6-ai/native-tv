@@ -307,6 +307,35 @@ inline bool tiles(const CardRow &row, bool named = false) {
 // The Ribbon strip: tiles edge to edge on a band that stands clear of the screen's foot.
 constexpr float kRibbonTop = 800, kRibbonTileW = 200, kRibbonTileH = 200;
 
+// Fork: Home as a strip of apps (the Ribbon, or an app bar) keeps one row of videos besides them:
+// the owner's YouTube subscriptions, or YouTube's trending ones without an account.
+inline bool strip() {
+    return style() == Style::Ribbon || barMode();
+}
+inline bool videoRow(const CardRow &row) {
+    return row.key == "subs" || row.key == "youtube";
+}
+// The video row's name, standing clear above the bar (and the Glass Pill Tabs' categories, and a
+// focused app's name over it), or above the Ribbon's strip. A bar at the top or down the side
+// leaves the screen's foot to the videos.
+inline float videoRowLabelY() {
+    constexpr float kRowHeight = kit::layout::rowLabelH + kit::layout::rowLabelGap + kit::layout::cardH;
+    float above = kRibbonTop;
+    if (barMode()) {
+        if (barVertical() || bar().alternate)
+            return kit::canvas::height - 96 - kRowHeight;
+        above = barTop() - (bar().design == Bar::Pills                                ? 116
+                            : bar().design == Bar::Horizon || bar().design == Bar::Fade ? 72
+                            : bar().design == Bar::Cards || bar().design == Bar::Halo   ? 60
+                                                                                        : 24);
+    }
+    return above - 28 - kRowHeight;
+}
+// How far the video row is drawn from where Home's row `rowIndex` would stand.
+inline float videoRowShift(size_t rowIndex) {
+    return videoRowLabelY() - kit::geometry::rowLabelY(static_cast<int>(rowIndex));
+}
+
 inline float itemWidth(const CardRow &row, bool named = false) {
     if (barRow(row, named))
         return barIcon();
@@ -340,6 +369,8 @@ inline Rect item(const CardRow &row, size_t rowIndex, size_t column, bool named 
     float x = kit::canvas::safeX + static_cast<float>(column) * (width + gap);
     if (tiles(row, named) && style() == Style::Ribbon)
         return {x, kRibbonTop, width, kRibbonTileH};
+    if (videoRow(row) && strip())
+        return {x, videoRowLabelY() + kit::layout::rowLabelH + kit::layout::rowLabelGap, width, kit::layout::cardH};
     return {x, kit::geometry::rowItemsY(static_cast<int>(rowIndex)), width,
             isApps(row) && !tiles(row, named) ? kit::layout::appD : kit::layout::cardH};
 }

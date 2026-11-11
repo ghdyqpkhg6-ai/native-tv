@@ -1,4 +1,6 @@
 #include "daemon/home_video_player.hpp"
+#include <algorithm>
+#include <random>
 #include <utility>
 
 namespace nativetv {
@@ -30,6 +32,26 @@ Json withMedia(const std::string &mediaId) {
     return payload;
 }
 void ignore(const LunaReply &) {}
+
+// Fork: a long video (a drive's 4K film) starts somewhere new each time it loads or loops, so Home
+// does not open on the same minute every time; a short one (the TV's own 12 s clip) plays whole.
+// The media server names the length once, in its sourceInfo event after load.
+const double kShuffleFromMs = 120000, kShuffleTailMs = 60000;
+double shuffledStart(double durationMs) {
+    if (durationMs < kShuffleFromMs)
+        return 0;
+    thread_local std::mt19937 generator{std::random_device{}()}; // luna replies arrive on more than one thread
+    std::uniform_real_distribution<double> pick(0, durationMs - kShuffleTailMs);
+    return static_cast<double>(static_cast<long long>(pick(generator)) / 1000 * 1000);
+}
+double durationOf(const Json &sourceInfo) {
+    if (!sourceInfo["seekable"].boolean(true))
+        return 0;
+    double longest = 0;
+    for (const Json &program : sourceInfo["programInfo"].items())
+        longest = std::max(longest, program["duration"].number(0));
+    return longest;
+}
 } // namespace
 
 HomeVideoPlayer::HomeVideoPlayer(LunaClient &luna, Logger *logger) : luna_(luna), logger_(logger) {
@@ -119,26 +141,30 @@ void HomeVideoPlayer::start(LunaClient &luna, Logger *logger, const std::shared_
                 return;
             }
             state->mediaId = mediaId;
-            client->call("com.webos.media/play", withMedia(mediaId), ignore, kAppId);
-            // Silent unless Home settings switch the wallpaper's sound on.
-            Json volume = withMedia(mediaId);
-            volume.set("volume", Json::numeric(state->sound ? 100 : 0));
-            client->call("com.webos.media/setVolume", volume, ignore, kAppId);
-            // A loop: at its end the file starts again.
+            // A loop: at its end the file starts again, a long one at a new place (shuffledStart).
             LunaSubscriptionHandlers handlers;
-            handlers.message = [weak, generation, client, mediaId](const Json &event) {
-                if (!event.has("endOfStream"))
+            handlers.message = [weak, generation, client, mediaId, logger](const Json &event) {
+                const bool loaded = event.has("sourceInfo"), ended = event.has("endOfStream");
+                if (!loaded && !ended)
                     return;
                 const std::shared_ptr<State> state = weak.lock();
                 if (!state)
                     return;
+                double position = 0;
                 {
                     std::lock_guard<std::mutex> lock(state->mutex);
                     if (generation != state->generation || state->mediaId != mediaId)
                         return;
+                    if (loaded)
+                        state->durationMs = durationOf(event["sourceInfo"]);
+                    position = shuffledStart(state->durationMs);
                 }
+                if (loaded && position <= 0)
+                    return; // short: it plays from its start
+                if (loaded && logger)
+                    logger->info("home video: starting at " + std::to_string(static_cast<long long>(position / 1000)) + " s");
                 Json seek = withMedia(mediaId);
-                seek.set("position", Json::numeric(0));
+                seek.set("position", Json::numeric(position));
                 client->call("com.webos.media/seek", seek, [client, mediaId](const LunaReply &) {
                     client->call("com.webos.media/play", withMedia(mediaId), ignore, kAppId);
                 }, kAppId);
@@ -147,6 +173,12 @@ void HomeVideoPlayer::start(LunaClient &luna, Logger *logger, const std::shared_
                                               std::move(handlers));
             if (state->events)
                 (void)state->events->start();
+            // Played once subscribed, so the sourceInfo that names the length is not missed.
+            client->call("com.webos.media/play", withMedia(mediaId), ignore, kAppId);
+            // Silent unless Home settings switch the wallpaper's sound on.
+            Json volume = withMedia(mediaId);
+            volume.set("volume", Json::numeric(state->sound ? 100 : 0));
+            client->call("com.webos.media/setVolume", volume, ignore, kAppId);
             if (logger)
                 logger->info("home video: playing " + state->path);
         },
