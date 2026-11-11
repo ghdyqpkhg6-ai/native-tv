@@ -96,6 +96,7 @@ void Application::key(Key key) {
             if (home.rows[home.row].key == "tabs" && home.row == rowBefore && home.column != columnBefore &&
                 home.column != home.pillTab) {
                 home.pillTab = home.column;
+                home.pillTabKey = home.rows[home.row].cards[home.column].id.substr(4); // "tab:<kind>"
                 rebuildHome();
             }
             const Card &card = home.rows[home.row].cards[home.column];

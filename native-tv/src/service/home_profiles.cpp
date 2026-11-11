@@ -37,7 +37,7 @@ const char *const kStyles[] = {"google", "classic", "glass", "ribbon"};
 // Fork: Home's app bar and its options (ui/home_layout.hpp reads them; "auto" is the design's own).
 const char *const kAppBars[] = {"off", "aurora", "horizon", "cards", "neon", "circles", "vertical",
                                 "halo", "fade", "pills"};
-const char *const kBarSizes[] = {"s", "m", "l"};
+const char *const kBarSizes[] = {"s", "m", "l", "xl"};
 const char *const kBarSpacings[] = {"tight", "normal", "wide"};
 const char *const kBarOpacities[] = {"0", "25", "50", "75", "100"};
 const char *const kBarGlows[] = {"off", "low", "medium", "high"};

@@ -45,6 +45,11 @@ struct Item {
 // An app's icon, whole, rounded by `radius`, over a neutral placeholder that hides once the icon
 // is on show.
 void icon(kit::Paint paint, Rect area, const Card &card, float radius) {
+    // A soft shadow under the tile, so it settles into the wallpaper rather than sitting on it.
+    if (home::bar().fade) {
+        Node &shadow = paint.scene.shape(area, kClear, radius);
+        shadow.shadow = {0, area.h * .08f, area.h * .32f, 0, alpha(kInk, .55f)};
+    }
     Node &base = paint.scene.shape(area, kit::color::surface2, radius);
     base.backing = !card.image.empty();
     if (!card.image.empty())
@@ -112,7 +117,7 @@ struct Scaled {
 void fadeShade(Scene &scene, const std::vector<Item> &items) {
     if (!home::bar().fade || items.empty())
         return;
-    const float strength = .55f + .35f * home::bar().opacity;
+    const float strength = .7f + .3f * home::bar().opacity;
     if (home::barVertical()) {
         const float x = items.front().rest.x;
         if (home::bar().alternate) {
@@ -130,9 +135,19 @@ void fadeShade(Scene &scene, const std::vector<Item> &items) {
         Node &shade = scene.shape({0, 0, kit::canvas::width, bottom}, kClear);
         shade.gradient = Gradient::between(0, alpha(kInk, 0), alpha(kInk, strength));
     } else {
-        const float top = first.y - (home::bar().design == Bar::Pills ? 520 : 420);
-        Node &shade = scene.shape({0, top, kit::canvas::width, kit::canvas::height - top}, kClear);
-        shade.gradient = Gradient::between(180, alpha(kInk, 0), alpha(kInk, strength));
+        // Clear at the top, a gentle rise over the videos, and deepest behind the tiles, so the bar
+        // fades into the wallpaper with no edge to it.
+        const float top = first.y - (home::bar().design == Bar::Pills ? 620 : 480);
+        const float height = kit::canvas::height - top;
+        Node &shade = scene.shape({0, top, kit::canvas::width, height}, kClear);
+        shade.gradient.angle = 180;
+        shade.gradient.stops = 3;
+        shade.gradient.color[0] = alpha(kInk, 0);
+        shade.gradient.at[0] = 0;
+        shade.gradient.color[1] = alpha(kInk, strength * .55f);
+        shade.gradient.at[1] = std::min(.9f, std::max(.3f, (first.y - 40 - top) / height));
+        shade.gradient.color[2] = alpha(kInk, strength);
+        shade.gradient.at[2] = 1;
     }
 }
 

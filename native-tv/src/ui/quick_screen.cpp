@@ -128,7 +128,7 @@ std::string feedRowIcon(const std::string &key) {
 }
 // Fork: the app bar's options (Appearance > App bar options), stepped as the choices above are.
 const LayoutChoice kBarChoices[] = {
-    {"barSize", "display", "m", {"s", "m", "l"}},
+    {"barSize", "display", "m", {"s", "m", "l", "xl"}},
     {"barSpacing", "apps", "normal", {"tight", "normal", "wide"}},
     {"barOpacity", "palette", "50", {"0", "25", "50", "75", "100"}},
     {"barGlow", "palette", "medium", {"off", "low", "medium", "high"}},
@@ -178,8 +178,10 @@ std::string barOptionTitle(const std::string &key) {
 }
 std::string choiceLabel(const std::string &key, const std::string &value) {
     if (key == "barSize")
-        return value == "s" ? msg("tv.quick.small", "Small") : value == "l" ? msg("tv.quick.large", "Large")
-                                                                            : msg("tv.quick.medium", "Medium");
+        return value == "s"    ? msg("tv.quick.small", "Small")
+               : value == "l"  ? msg("tv.quick.large", "Large")
+               : value == "xl" ? msg("tv.quick.extraLarge", "Extra large")
+                               : msg("tv.quick.medium", "Medium");
     if (key == "barSpacing")
         return value == "tight" ? msg("tv.quick.tight", "Tight") : value == "wide" ? msg("tv.quick.wide", "Wide")
                                                                                    : msg("tv.quick.normal", "Normal");

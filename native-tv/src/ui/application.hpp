@@ -69,6 +69,7 @@ struct HomeState {
     // an app that was hidden) and Red does the same. Home's row lists the hidden apps, dimmed, last.
     bool editing = false, editHide = false;
     size_t pillTab = 0; // fork: the Glass Pill Tabs' selected category
+    std::string pillTabKey = "video"; // its kind: Home opens on Movies & TV when the TV has some
     std::vector<Tab> tabs;
     std::vector<CardRow> rows;
     Card hero;                 // the card the hero is showing or about to show

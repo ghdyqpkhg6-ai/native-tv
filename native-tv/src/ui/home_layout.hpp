@@ -97,7 +97,7 @@ inline Json liveWallpaper(const Json &catalogue) {
 enum class Bar { Off, Aurora, Horizon, Cards, Neon, Circles, Vertical, Halo, Fade, Pills };
 struct BarConfig {
     Bar design = Bar::Off;
-    float size = 1;         // "barSize": .8, 1 or 1.25
+    float size = 1;         // "barSize": .8, 1, 1.25 or 1.5
     float spacing = 1;      // "barSpacing": .5, 1 or 1.6 times the design's own gap
     float opacity = .5f;    // "barOpacity": the container's strength, 0 to 1
     float glow = 1;         // "barGlow": 0, .5, 1 or 1.6
@@ -162,7 +162,7 @@ inline BarConfig barConfigOf(const Json &layout) {
     BarConfig config;
     config.design = barOf(layout["appBar"].string());
     const std::string size = layout["barSize"].string("m");
-    config.size = size == "s" ? .8f : size == "l" ? 1.25f : 1;
+    config.size = size == "s" ? .8f : size == "l" ? 1.25f : size == "xl" ? 1.5f : 1;
     const std::string spacing = layout["barSpacing"].string("normal");
     config.spacing = spacing == "tight" ? .5f : spacing == "wide" ? 1.6f : 1;
     config.opacity = static_cast<float>(std::atoi(layout["barOpacity"].string("50").c_str())) / 100;

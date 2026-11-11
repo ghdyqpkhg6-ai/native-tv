@@ -32,6 +32,9 @@ void pillTabsOf(HomeState &home, const Json &catalogue, const Json &discover, co
     if (!inputs.empty())
         categories.push_back({"inputs", "Inputs"});
     home.pillTab = std::min(home.pillTab, categories.size() - 1);
+    for (size_t i = 0; i < categories.size(); ++i)
+        if (categories[i].key == home.pillTabKey)
+            home.pillTab = i;
     CardRow tabs;
     tabs.key = "tabs";
     tabs.title = "Categories";
